@@ -13,6 +13,8 @@ const sourceStatus = {
   v2ex: { name: 'v2ex', label: 'V2EX 热门', status: 'idle', lastFetch: null, itemCount: 0 },
   hackernews: { name: 'hackernews', label: 'Hacker News', status: 'idle', lastFetch: null, itemCount: 0 },
   github: { name: 'github', label: 'GitHub Trending', status: 'idle', lastFetch: null, itemCount: 0 },
+  google: { name: 'google', label: 'Google News', status: 'idle', lastFetch: null, itemCount: 0 },
+  reddit: { name: 'reddit', label: 'Reddit 热门', status: 'idle', lastFetch: null, itemCount: 0 },
 };
 
 export function updateSourceStatus(source, status, itemCount = 0) {

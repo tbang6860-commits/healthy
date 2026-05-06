@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import TrendChart from '../components/TrendChart';
+import { Activity } from 'lucide-react';
 
 export default function Trends({ hotspots }) {
   const [trends, setTrends] = useState([]);
@@ -9,7 +10,6 @@ export default function Trends({ hotspots }) {
     fetch('/api/hotspots/trends')
       .then(r => r.json())
       .then(json => {
-        // 按热点分组
         const grouped = {};
         for (const s of json.data || []) {
           if (!grouped[s.hotspot_id]) grouped[s.hotspot_id] = [];
@@ -23,25 +23,34 @@ export default function Trends({ hotspots }) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="w-8 h-8 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+      <div className="space-y-6">
+        <div className="h-5 w-28 skeleton rounded" />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="card p-5 h-48 skeleton" />
+          ))}
+        </div>
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <h2 className="text-lg font-bold text-gray-200">热度趋势</h2>
+      <div className="flex items-center gap-2.5">
+        <Activity size={17} className="text-[#4cc9f0]" />
+        <h2 className="text-lg font-bold text-white">热度趋势</h2>
+      </div>
 
       {trends.length === 0 ? (
-        <div className="glass-card p-8 text-center">
-          <p className="text-gray-500">暂无趋势数据，等待更多抓取周期...</p>
+        <div className="card p-12 text-center">
+          <Activity size={28} className="text-[#8a8a8a] mx-auto mb-2" />
+          <p className="text-[#a0a0a0] text-xs">暂无趋势数据，等待更多抓取周期...</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {trends.map(([hotspotId, snapshots]) => (
-            <div key={hotspotId} className="glass-card p-4">
-              <p className="text-sm text-gray-400 mb-3 truncate">
+            <div key={hotspotId} className="card p-5">
+              <p className="text-sm text-white mb-4 truncate font-medium">
                 {snapshots[0]?.title || `热点 #${hotspotId}`}
               </p>
               <TrendChart data={snapshots} />
@@ -50,29 +59,21 @@ export default function Trends({ hotspots }) {
         </div>
       )}
 
-      <div className="glass-card p-6">
-        <h3 className="text-sm font-semibold text-gray-300 mb-4">当前 TOP 10 热度分布</h3>
-        <div className="space-y-2">
+      {/* Distribution */}
+      <div className="card p-6">
+        <h3 className="text-xs font-semibold text-[#a0a0a0] mb-5 uppercase tracking-wider">当前热度分布 TOP 10</h3>
+        <div className="space-y-3">
           {hotspots.slice(0, 10).map((h, i) => (
             <div key={h.id} className="flex items-center gap-3">
-              <span className="text-xs text-gray-500 w-5">{i + 1}</span>
-              <span className="text-sm text-gray-300 truncate flex-1">{h.title}</span>
-              <div className="w-32 h-2 bg-white/5 rounded-full overflow-hidden">
+              <span className="text-[11px] text-[#8a8a8a] w-5 font-mono">{i + 1}</span>
+              <span className="text-sm text-white truncate flex-1">{h.title}</span>
+              <div className="w-32 h-1.5 bg-[#2a2a2a] rounded-full overflow-hidden">
                 <div
-                  className="h-full rounded-full"
-                  style={{
-                    width: `${h.heat_score}%`,
-                    background: h.heat_score > 70
-                      ? 'linear-gradient(90deg, #ff4088, #ff9100)'
-                      : h.heat_score > 30
-                      ? 'linear-gradient(90deg, #4d7cff, #00e5ff)'
-                      : '#4d7cff',
-                  }}
+                  className={`h-full rounded-full ${h.heat_score > 70 ? 'heat-high' : h.heat_score > 30 ? 'heat-mid' : 'heat-low'}`}
+                  style={{ width: `${Math.min(h.heat_score, 100)}%` }}
                 />
               </div>
-              <span className="text-xs text-gray-500 w-10 text-right">
-                {Math.round(h.heat_score)}°
-              </span>
+              <span className="text-[11px] text-[#a0a0a0] w-9 text-right font-mono">{Math.round(h.heat_score)}°</span>
             </div>
           ))}
         </div>

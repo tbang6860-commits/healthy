@@ -1,9 +1,9 @@
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BarChart3, Zap, Radio } from 'lucide-react';
+import { BarChart3 } from 'lucide-react';
 import HotCard from '../components/HotCard';
 
-const CATEGORIES = ['全部', '科技', '娱乐', '社会', '财经', '体育', '国际', '军事', '健康', '教育'];
+const CATS = ['全部', '科技', '娱乐', '社会', '财经', '体育', '国际', '军事', '健康', '教育'];
 
 export default function Dashboard({ hotspots, loading, onSelect }) {
   const [activeCat, setActiveCat] = useState('全部');
@@ -13,30 +13,39 @@ export default function Dashboard({ hotspots, loading, onSelect }) {
     return hotspots.filter(h => h.category === activeCat);
   }, [hotspots, activeCat]);
 
-  // Stats
   const stats = useMemo(() => ({
     total: hotspots.length,
     newCount: hotspots.filter(h => h.is_new).length,
     hotCount: hotspots.filter(h => h.heat_score > 70).length,
   }), [hotspots]);
 
+  const layout = useMemo(() => {
+    return filtered.map((h, i) => {
+      let span = '';
+      if (i === 0) span = 'lg:col-span-2 lg:row-span-2';
+      else if (i < 4) span = 'lg:row-span-2';
+      return { ...h, span };
+    });
+  }, [filtered]);
+
   if (loading) {
     return (
       <div className="space-y-6">
         <div className="flex items-center gap-3">
-          <div className="w-32 h-6 bg-white/[0.03] rounded-lg animate-pulse" />
+          <div className="h-5 w-28 skeleton rounded" />
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 auto-rows-[140px] gap-4">
+        <div className="flex gap-2 flex-wrap">
+          {CATS.slice(0, 6).map(c => (
+            <div key={c} className="h-8 w-14 skeleton rounded-lg" />
+          ))}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 auto-rows-[150px] gap-5">
           {Array.from({ length: 8 }).map((_, i) => (
-            <div
-              key={i}
-              className={`glass-card p-4 animate-pulse ${
-                i === 0 ? 'lg:col-span-2 lg:row-span-2' : i < 3 ? 'lg:row-span-2' : ''
-              }`}
-            >
-              <div className="w-16 h-4 bg-white/[0.04] rounded mb-3" />
-              <div className="w-full h-5 bg-white/[0.03] rounded mb-2" />
-              <div className="w-3/4 h-5 bg-white/[0.03] rounded" />
+            <div key={i} className={`card p-2 ${i === 0 ? 'lg:col-span-2 lg:row-span-2' : i < 4 ? 'lg:row-span-2' : ''}`}>
+              <div className="h-3 w-20 skeleton rounded mb-3" />
+              <div className="h-5 w-full skeleton rounded mb-2" />
+              <div className="h-5 w-3/4 skeleton rounded mb-4" />
+              <div className="h-2 w-full skeleton rounded mt-auto" />
             </div>
           ))}
         </div>
@@ -46,63 +55,50 @@ export default function Dashboard({ hotspots, loading, onSelect }) {
 
   if (!hotspots.length) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 gap-4">
-        <Radio size={32} className="text-[var(--text-muted)]" />
-        <p className="text-[var(--text-secondary)] text-sm">暂无热点数据，请点击右上角刷新按钮</p>
+      <div className="flex flex-col items-center justify-center py-24 gap-4">
+        <BarChart3 size={32} className="text-[var(--text-muted)]" />
+        <p className="text-[var(--text-secondary)] text-sm">暂无热点数据，点击右上角刷新按钮获取最新热点</p>
       </div>
     );
   }
 
-  // Bento grid: first card spans 2 cols + 2 rows, next 2 span 2 rows
-  const large = filtered.slice(0, 3);
-  const small = filtered.slice(3);
-
-  const container = {
-    hidden: { opacity: 0 },
-    show: {
-      opacity: 1,
-      transition: { staggerChildren: 0.04 },
-    },
-  };
-
-  const item = {
-    hidden: { opacity: 0, y: 16 },
-    show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' } },
-  };
-
   return (
-    <div className="space-y-5">
-      {/* Stats bar */}
-      <div className="flex items-center gap-4 flex-wrap">
-        <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-          <Zap size={15} className="text-[var(--accent)]" />
-          <span className="font-semibold text-white">{stats.total}</span>
-          <span>条热点</span>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div className="flex items-center gap-4">
+          <h2 className="text-lg font-bold text-white">实时热点</h2>
+          <div className="flex items-center gap-3 text-xs">
+            <span className="flex items-center gap-1.5 text-[#a0a0a0]">
+              <span className="font-semibold text-white">{stats.total}</span>
+              条
+            </span>
+            {stats.newCount > 0 && (
+              <span className="flex items-center gap-1 text-[#4cc9f0]">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#4cc9f0]" />
+                {stats.newCount} 新增
+              </span>
+            )}
+            {stats.hotCount > 0 && (
+              <span className="flex items-center gap-1 text-[#4cc9f0]">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#4cc9f0]" />
+                {stats.hotCount} 高热
+              </span>
+            )}
+          </div>
         </div>
-        {stats.newCount > 0 && (
-          <div className="flex items-center gap-1.5 text-xs">
-            <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-new)]" />
-            <span className="text-[var(--accent-new)]">{stats.newCount} 条新增</span>
-          </div>
-        )}
-        {stats.hotCount > 0 && (
-          <div className="flex items-center gap-1.5 text-xs">
-            <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-hot)]" />
-            <span className="text-[var(--accent-hot)]">{stats.hotCount} 条高热</span>
-          </div>
-        )}
       </div>
 
       {/* Category filter */}
-      <div className="flex gap-1.5 flex-wrap">
-        {CATEGORIES.map(cat => (
+      <div className="flex gap-2 flex-wrap">
+        {CATS.map(cat => (
           <button
             key={cat}
             onClick={() => setActiveCat(cat)}
-            className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all duration-200 ${
+            className={`text-xs px-3.5 py-2 rounded-lg font-medium transition-all duration-200 min-h-[44px] ${
               activeCat === cat
-                ? 'bg-white/[0.08] text-white border border-white/[0.1]'
-                : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-white/[0.03] border border-transparent'
+                ? 'bg-[#4cc9f0]/10 text-[#4cc9f0] border border-[#4cc9f0]/20'
+                : 'text-[#a0a0a0] hover:text-white hover:bg-[#1a1a1a] border border-transparent'
             }`}
           >
             {cat}
@@ -114,43 +110,25 @@ export default function Dashboard({ hotspots, loading, onSelect }) {
       <AnimatePresence mode="wait">
         <motion.div
           key={activeCat}
-          variants={container}
-          initial="hidden"
-          animate="show"
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 auto-rows-[140px] gap-4"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
         >
-          {large.map((h, i) => (
-            <motion.div
-              key={h.id}
-              variants={item}
-              className={i === 0 ? 'lg:col-span-2 lg:row-span-2' : 'lg:row-span-2'}
-            >
-              <HotCard
-                hotspot={h}
-                onClick={onSelect}
-                size={i === 0 ? 'large' : 'normal'}
-                index={i}
-              />
-            </motion.div>
-          ))}
-
-          {small.map((h, i) => (
-            <motion.div key={h.id} variants={item}>
-              <HotCard
-                hotspot={h}
-                onClick={onSelect}
-                size="normal"
-                index={i + 3}
-              />
-            </motion.div>
-          ))}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 auto-rows-[150px] gap-5">
+            {layout.map((h, i) => (
+              <div key={h.id} className={`${h.span || ''}`}>
+                <HotCard hotspot={h} onClick={onSelect} span={h.span} index={i} />
+              </div>
+            ))}
+          </div>
         </motion.div>
       </AnimatePresence>
 
       {filtered.length === 0 && (
-        <div className="text-center py-12">
-          <BarChart3 size={28} className="text-[var(--text-muted)] mx-auto mb-3" />
-          <p className="text-[var(--text-secondary)] text-sm">该分类暂无热点</p>
+        <div className="text-center py-16">
+          <BarChart3 size={28} className="text-[#8a8a8a] mx-auto mb-3" />
+          <p className="text-[#a0a0a0] text-sm">该分类暂无热点数据</p>
         </div>
       )}
     </div>

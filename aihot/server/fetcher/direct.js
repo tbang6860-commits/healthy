@@ -103,17 +103,80 @@ async function fetchGithubTrending() {
 }
 
 /**
+ * Google News RSS — 全球新闻热点聚合
+ */
+async function fetchGoogleNews() {
+  try {
+    const res = await http.get('https://news.google.com/rss', { timeout: 15000 });
+    const xml = typeof res.data === 'string' ? res.data : String(res.data);
+
+    // 用正则解析 RSS <item> 块，提取 title 和 link
+    const itemRegex = /<item>[\s\S]*?<\/item>/g;
+    const titleRegex = /<title><!\[CDATA\[(.*?)\]\]>|<title>(.*?)<\/title>/;
+    const linkRegex = /<link>(.*?)<\/link>/;
+
+    const items = [];
+    let match;
+    while ((match = itemRegex.exec(xml)) !== null && items.length < 30) {
+      const block = match[0];
+      const titleMatch = block.match(titleRegex);
+      const linkMatch = block.match(linkRegex);
+
+      if (titleMatch) {
+        const title = (titleMatch[1] || titleMatch[2] || '').trim();
+        // 跳过 RSS feed 自身的 title
+        if (!title) continue;
+        const url = linkMatch ? linkMatch[1].trim() : '';
+        items.push({
+          title: title.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"'),
+          url,
+          raw_heat: 500000 + items.length * 5000,
+          source: 'google',
+        });
+      }
+    }
+
+    return items.reverse(); // 最近的在前
+  } catch (e) { console.error('[GoogleNews]', e.message); return []; }
+}
+
+/**
+ * Reddit r/popular — 全站热门帖子
+ */
+async function fetchRedditPopular() {
+  try {
+    const res = await http.get('https://www.reddit.com/r/popular/hot.json?limit=30', {
+      timeout: 15000,
+      headers: { 'User-Agent': 'PulseSphere/1.0' },
+    });
+
+    const children = res.data?.data?.children || [];
+    return children.map(c => {
+      const d = c.data || {};
+      return {
+        title: (d.title || '').slice(0, 100),
+        url: `https://www.reddit.com${d.permalink || ''}`,
+        raw_heat: (d.score || 0) * 100 + (d.num_comments || 0) * 500,
+        source: 'reddit',
+      };
+    });
+  } catch (e) { console.error('[Reddit]', e.message); return []; }
+}
+
+/**
  * 统一入口：并行抓取所有直接 API 源
  */
 export async function fetchAllDirect() {
-  console.log('[Direct] Fetching 5 direct API sources...');
+  console.log('[Direct] Fetching 7 direct API sources...');
 
-  const [bili, zhihu, v2ex, hn, github] = await Promise.allSettled([
+  const [bili, zhihu, v2ex, hn, github, google, reddit] = await Promise.allSettled([
     fetchBilibili(),
     fetchZhihu(),
     fetchV2ex(),
     fetchHackerNews(),
     fetchGithubTrending(),
+    fetchGoogleNews(),
+    fetchRedditPopular(),
   ]);
 
   const results = [];
@@ -151,6 +214,20 @@ export async function fetchAllDirect() {
     console.log(`[Direct] GitHub: ${github.value.length} items`);
   } else {
     console.error('[Direct] GitHub failed:', github.reason?.message);
+  }
+
+  if (google.status === 'fulfilled') {
+    results.push(...google.value);
+    console.log(`[Direct] Google News: ${google.value.length} items`);
+  } else {
+    console.error('[Direct] Google News failed:', google.reason?.message);
+  }
+
+  if (reddit.status === 'fulfilled') {
+    results.push(...reddit.value);
+    console.log(`[Direct] Reddit: ${reddit.value.length} items`);
+  } else {
+    console.error('[Direct] Reddit failed:', reddit.reason?.message);
   }
 
   return results.filter(r => r.title);

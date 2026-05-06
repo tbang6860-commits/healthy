@@ -3,7 +3,16 @@
  * - 标题相似度去重
  * - 跨源关联合并
  * - 统一热度打分 (0-100)
+ * - 来源可信度加权
  */
+
+import config from './config.js';
+
+const DEFAULT_WEIGHT = 1.0;
+
+function getSourceWeight(source) {
+  return config.sourceWeights?.[source] ?? DEFAULT_WEIGHT;
+}
 
 /**
  * 计算两个字符串的 Jaccard 相似度（基于字符 2-gram）
@@ -73,10 +82,12 @@ function aggregate(rawItems, threshold = 0.7) {
       raw_heat: i.raw_heat,
     }));
 
-    // 综合热度：取聚类中最大热度 + 多源加分
+    // 综合热度：取聚类中最大热度 × 来源可信度权重 + 多源加分
     const maxHeat = Math.max(...cluster.items.map(i => i.raw_heat));
+    // 取聚类中来源的最高权重
+    const maxWeight = Math.max(...cluster.items.map(i => getSourceWeight(i.source)));
     const sourceBonus = new Set(cluster.items.map(i => i.source)).size * 5;
-    const heatScore = Math.min(100, Math.round(normalizeHeat(maxHeat) + sourceBonus));
+    const heatScore = Math.min(100, Math.round(normalizeHeat(maxHeat) * maxWeight + sourceBonus));
 
     return {
       title: mainItem.title,

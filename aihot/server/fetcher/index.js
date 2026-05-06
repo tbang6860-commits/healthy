@@ -93,12 +93,15 @@ function getFallbackData() {
 export async function fetchAll() {
   console.log('[Fetcher] Starting parallel fetch from all sources...');
 
-  const [weiboRaw, baiduRaw, directItems, twitterTrends, twitterTweets] = await Promise.allSettled([
+  // 先获取 Twitter 趋势（用作独立数据 + 驱动搜索）
+  const trendsResult = await getTrends().catch(() => []);
+  const trendTopics = trendsResult.map(t => t.title).filter(Boolean);
+
+  const [weiboRaw, baiduRaw, directItems, twitterTweets] = await Promise.allSettled([
     scrape(weiboHot),
     scrape(baiduHot),
     fetchAllDirect(),
-    getTrends(),
-    searchHotTweets(),
+    searchHotTweets(trendTopics),
   ]);
 
   const results = [];
@@ -128,12 +131,12 @@ export async function fetchAll() {
   }
 
   // Twitter 趋势
-  if (twitterTrends.status === 'fulfilled') {
-    results.push(...normalize(twitterTrends.value, 'twitter'));
-    console.log(`[Fetcher] Twitter Trends: ${twitterTrends.value.length} items`);
+  if (trendsResult.length > 0) {
+    results.push(...normalize(trendsResult, 'twitter'));
+    console.log(`[Fetcher] Twitter Trends: ${trendsResult.length} items`);
   }
 
-  // Twitter 热推
+  // Twitter 热推（用趋势话题名驱动搜索）
   if (twitterTweets.status === 'fulfilled') {
     results.push(...normalize(twitterTweets.value, 'twitter'));
     console.log(`[Fetcher] Twitter Tweets: ${twitterTweets.value.length} items`);

@@ -1,6 +1,6 @@
 # AI 热点聚合分析平台 — 技术方案
 
-> 版本：v1.1 | 日期：2026-05-05 | 后端：Node.js + Express 5
+> 版本：v1.2 | 日期：2026-05-06 | 后端：Node.js + Express 5 | 设计审计：已完成
 
 ---
 
@@ -289,3 +289,20 @@ CREATE TABLE snapshots (
 | 4 | 前端 UI | client/* | `npm run dev` → 浏览器 |
 | 5 | 联调 + 通知 + 定时 | scheduler.js, useNotifications.js | 30min 刷新 + 通知 |
 | 6 | Agent Skills | skills/* | Agent 自主分析 |
+| 7 | UI/UX 设计审计 | index.css, *.jsx | Accessibility AA 合规 |
+
+---
+
+## 11. 设计系统与可访问性（v1.2 新增）
+
+> 2026-05-06 基于 **UI/UX Pro Max Skill** 10 级优先级体系完成审计，详见 [README.md](./README.md)
+
+### 关键修复
+
+| 优先级 | 类别 | 修复内容 |
+|--------|------|----------|
+| P1 | 颜色对比度 | `#6b6b6b → #8a8a8a`，WCAG AA 4.5:1 通过 |
+| P1 | Focus 环 | 全局 `:focus-visible` + skip-link |
+| P2 | 触摸目标 | 所有交互按钮 `min-h-[44px]`，间距 ≥ 8px |
+| P7 | 动画 | `prefers-reduced-motion` 媒体查询 |
+| P9 | 键盘导航 | HotCard `role="button"` + Enter/Space 支持 |

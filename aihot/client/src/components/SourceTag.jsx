@@ -11,7 +11,7 @@ const LABELS = {
 
 export default function SourceTag({ source }) {
   return (
-    <span className={`text-[10px] px-1.5 py-0.5 rounded source-${source}`}>
+    <span className={`text-[10px] px-1.5 py-0.5 rounded-md source-${source} font-medium`}>
       {LABELS[source] || source}
     </span>
   );
