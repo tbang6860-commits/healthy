@@ -2,15 +2,41 @@ import { MonitorSkill } from './skills/monitorSkill.js';
 import { AnalyzeSkill } from './skills/analyzeSkill.js';
 import { PushSkill } from './skills/pushSkill.js';
 import { chat } from '../ai/client.js';
+import db from '../db.js';
+
+// ── 人格系统提示词 ──
+const PERSONA = `你是"脉冲星 Pulsar"，PulseSphere 热点聚合平台的 AI 管家。
+
+你的性格设定：
+- 热情、温暖、有活力，像一位对天下大事了如指掌又乐于分享的朋友
+- 说话自然口语化，带一点俏皮但不轻浮
+- 偶尔使用 1-2 个 emoji 点缀，但不过度
+- 回答简洁有力，通常 3-8 句话，不啰嗦
+- 如果用户问的是热点相关，你会先给一句亮眼的总结，再展开细节
+- 如果用户闲聊（问好、感谢、吐槽等），你会友好回应并自然地引导到热点话题
+
+禁忌：
+- 不要机械地列出数据列表，要用自己的话组织
+- 不要用"根据数据显示""查询结果如下"等书面语
+- 不要超过 300 字，保持轻快节奏
+
+当前可获取的热点概览（可在回答时参考，但不一定要全用）：
+{hotspotContext}`;
+
+const FREE_CHAT_PROMPT = `你是"脉冲星 Pulsar"，PulseSphere 热点聚合平台的 AI 管家。
+
+性格：热情友好、有活力、会聊天。回复简短自然，2-5 句话即可。
+
+如果用户聊的是与热点/新闻/科技/社会等相关的，可以自然地提及当前平台正在追踪的热点。
+如果用户只是在打招呼或闲聊，友好回应即可，不要生硬推销。
+
+当前追踪的热点领域：科技、娱乐、社会、财经、体育、国际、军事、健康、教育。`;
 
 /**
- * MasterAgent — 热点分析领域的总调度 Agent
+ * MasterAgent — Plan → Execute → Respond 架构
  *
- * 架构: Plan → Execute → Reflect 循环（最多 3 轮）
- * 路由策略:
- *   1. 规则匹配 (正则/关键词) — 快路径
- *   2. AI 意图识别 — DeepSeek 选择 Skill
- *   3. 关键词回退
+ * 升级版：所有用户可见的回复都由 LLM 生成，
+ * Skill 只负责取数据，MasterAgent 负责"说人话"。
  */
 export class MasterAgent {
   constructor() {
@@ -25,97 +51,90 @@ export class MasterAgent {
   }
 
   /**
-   * 主入口: 接收用户自然语言输入，返回结果
+   * 主入口
    */
   async run(userInput) {
     const originalInput = userInput;
-    let currentInput = userInput;
     const steps = [];
 
-    for (let i = 0; i < this.maxIterations; i++) {
-      // Phase 1: Plan — 选择 Skill + 提取参数
-      const plan = await this._makePlan(currentInput, steps);
-      if (!plan) {
-        return {
-          answer: '抱歉，我无法理解你的需求。你可以试试：\n- "有什么新热点？"\n- "分析一下XX话题"\n- "订阅科技类热点"',
-          steps,
-          iterations: i + 1,
-        };
-      }
+    // Phase 1: Plan — 判断意图
+    const plan = this._makePlan(userInput);
 
-      // Phase 2: Execute
-      const execResult = await this._executePlan(plan);
-      steps.push({ plan, result: execResult });
-
-      // Phase 3: Reflect
-      const reflection = this._reflect(originalInput, execResult, steps);
-
-      if (reflection.satisfied) {
-        // 保存到对话历史
-        this.conversationHistory.push(
-          { role: 'user', content: originalInput },
-          { role: 'assistant', content: execResult.data?.message || execResult.data?.analysis || JSON.stringify(execResult.data) }
-        );
-        if (this.conversationHistory.length > 20) {
-          this.conversationHistory = this.conversationHistory.slice(-20);
-        }
-
-        return {
-          answer: this._formatAnswer(execResult, plan),
-          plan: { skill: plan.skill, action: plan.action },
-          steps,
-          iterations: i + 1,
-        };
-      }
-
-      if (reflection.needMoreInfo) {
-        return {
-          question: reflection.question,
-          pending: true,
-          context: { lastSkill: plan.skill, lastAction: plan.action },
-          steps,
-          iterations: i + 1,
-        };
-      }
-
-      // 不满意 → 调整输入再试
-      currentInput = reflection.adjustInput || currentInput;
+    // 无明确意图 → 自由闲聊模式
+    if (!plan || !this.skills[plan.skill]) {
+      const answer = await this._freeChat(originalInput);
+      this._saveHistory(originalInput, answer);
+      return { answer, plan: { skill: 'chat', action: 'free_chat' }, steps, iterations: 1 };
     }
 
+    // Phase 2: Execute skill
+    let execResult;
+    try {
+      const skill = this.skills[plan.skill];
+      const validation = skill.validate(plan.params || {});
+      if (!validation.valid) {
+        return { answer: `唔，参数不太对：${validation.error}。能再说具体一点吗？`, plan, steps, iterations: 1 };
+      }
+      execResult = await skill.run(plan.params || {});
+    } catch (e) {
+      execResult = { success: false, error: e.message };
+    }
+
+    steps.push({ plan, result: execResult });
+
+    // Phase 3: LLM 生成自然语言回复
+    let answer;
+    if (execResult.success && execResult.data) {
+      answer = await this._generateResponse(originalInput, plan, execResult.data);
+    } else if (!execResult.success) {
+      // Skill 执行失败，用 LLM 生成友好的错误提示
+      answer = await this._generateErrorResponse(originalInput, execResult.error);
+    } else {
+      answer = await this._freeChat(originalInput);
+    }
+
+    this._saveHistory(originalInput, answer);
+
     return {
-      answer: '我尝试了多次但未能得到满意结果，请换个方式提问。',
+      answer,
+      plan: { skill: plan.skill, action: plan.action },
       steps,
-      iterations: this.maxIterations,
+      iterations: 1,
     };
   }
 
-  /**
-   * Phase 1: Plan — 决定用哪个 Skill 和什么参数
-   */
-  async _makePlan(input, history) {
-    // Tier 1: 规则匹配（快路径）
+  // ── Phase 1: Plan ──
+
+  _makePlan(input) {
+    // 先判断是否为纯闲聊（无明确意图）
+    if (this._isFreeChat(input)) return null;
+
+    // Tier 1: 规则匹配
     const rulePlan = this._ruleBasedPlan(input);
     if (rulePlan) return rulePlan;
 
-    // Tier 2: AI 意图识别
-    try {
-      const aiPlan = await this._aiBasedPlan(input, history);
-      if (aiPlan) return aiPlan;
-    } catch (e) {
-      console.error('[MasterAgent] AI plan failed:', e.message);
-    }
-
-    // Tier 3: 关键词回退
+    // Tier 2: 关键词回退
     return this._fallbackPlan(input);
   }
 
-  /**
-   * Tier 1: 规则匹配
-   */
+  // 闲聊/问候检测
+  _isFreeChat(input) {
+    const text = input.trim();
+    // 短问候
+    if (/^(你好|嗨|嘿|哈[喽罗]|早上好|下午好|晚上好|早啊|在吗|在[不在]|hello|hi|hey)[!！。.]*$/i.test(text)) return true;
+    // 纯闲聊短语
+    if (/^(谢谢|多谢|感谢|辛苦|再见|拜拜|晚安|好的|OK|ok|嗯|哦|啊|哈哈|嘻嘻|嘿嘿)[!！。.]*$/i.test(text)) return true;
+    // 跟助手聊天
+    if (/你.*(叫.*什么|是谁|多大了|男.*女|有没有.*名字|会.*什么|能.*做什么|有什么.*功能)/.test(text)) return true;
+    // 短闲聊（≤4字且无实质性内容）
+    if (text.length <= 4 && !/[搜找查阅看订].*/.test(text)) return true;
+    return false;
+  }
+
   _ruleBasedPlan(input) {
     const text = input.toLowerCase();
 
-    // 推送类（优先匹配，因为更具体）
+    // 推送类
     if (/订阅.*列表|我.*订阅了.*什么|有哪些订阅/.test(text)) {
       return { skill: 'push', action: 'list', params: { action: 'list' } };
     }
@@ -127,7 +146,7 @@ export class MasterAgent {
       const cat = this._extractCategory(input);
       return { skill: 'push', action: 'unsubscribe', params: { action: 'unsubscribe', category: cat } };
     }
-    if (/推送|给我推|有什么.*推荐|看点.*内容/.test(text)) {
+    if (/推送|给我推|有什么.*推荐/.test(text)) {
       return { skill: 'push', action: 'push', params: { action: 'push' } };
     }
 
@@ -137,8 +156,8 @@ export class MasterAgent {
       return { skill: 'analyze', action: 'search', params: { action: 'search', topic } };
     }
 
-    // 分析类
-    if (/分析|解读|怎么看|评价/.test(text)) {
+    // 深度分析类
+    if (/分析|解读|怎么看|评价|为什么.*火/.test(text)) {
       const topic = this._extractTopic(input);
       return { skill: 'analyze', action: 'deep_analyze', params: { action: 'deep_analyze', topic } };
     }
@@ -146,7 +165,7 @@ export class MasterAgent {
       const topic = this._extractTopic(input);
       return { skill: 'analyze', action: 'cross_source', params: { action: 'cross_source', topic } };
     }
-    if (/预测|趋势|未来|走向|还会.*火/.test(text)) {
+    if (/预测|趋势|未来|走向|还会/.test(text)) {
       const topic = this._extractTopic(input);
       return { skill: 'analyze', action: 'trend_predict', params: { action: 'trend_predict', topic } };
     }
@@ -155,175 +174,149 @@ export class MasterAgent {
       return { skill: 'analyze', action: 'related_topics', params: { action: 'related_topics', topic } };
     }
 
-    // 监控类（通用模式放最后）
-    if (/新热点|最新|有什么新|新话题|刚出来的/.test(text)) {
+    // 监控类
+    if (/新热点|最新|有什么新|新话题|刚出来|新鲜事|最近.*热点/.test(text)) {
       return { skill: 'monitor', action: 'new_hotspots', params: { action: 'new_hotspots' } };
     }
-    if (/飙升|上升|涨了|热度涨|什么话题火|最火/.test(text)) {
+    if (/飙升|上升|涨了|热度涨|什么.*火|最火|热搜|热门/.test(text)) {
       return { skill: 'monitor', action: 'rising_hotspots', params: { action: 'rising_hotspots' } };
     }
     if (/异常|波动|突[然发]|警报|爆了/.test(text)) {
       return { skill: 'monitor', action: 'anomalies', params: { action: 'anomalies' } };
     }
-    if (/概况|总体|总结|最近怎么样|热点情况/.test(text)) {
+    if (/概况|总体|总结|最近怎么样|热点情况|有什么|看看|看点/.test(text)) {
       return { skill: 'monitor', action: 'summary', params: { action: 'summary' } };
     }
 
     return null;
   }
 
-  /**
-   * Tier 2: AI 意图识别
-   */
-  async _aiBasedPlan(input, history) {
-    const toolDefs = Object.values(this.skills).map(s => s.toToolDef());
-
-    const systemPrompt = `你是热点分析助手，根据用户输入选择合适的工具。
-
-可用工具:
-1. hotspot_monitor - 监控热点变化：新热点、飙升话题、异常波动、综合摘要
-   参数: action (new_hotspots/rising_hotspots/anomalies/summary), category (可选), limit (可选)
-
-2. hotspot_analyze - 深度分析：话题解读、跨源对比、趋势预判、相关话题、搜索
-   参数: action (deep_analyze/cross_source/trend_predict/related_topics/search), topic (必填，搜索关键词或话题名)
-
-3. hotspot_push - 订阅管理：订阅、取消、查看订阅、获取推送
-   参数: action (subscribe/unsubscribe/list/push), category (subscribe/unsubscribe时需要)
-
-请直接回复 JSON（不要包含其他文字）:
-{"skill": "monitor|analyze|push", "action": "...", "params": {"action": "...", ...}}`;
-
-    const response = await chat([
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: input },
-    ], { temperature: 0.3, max_tokens: 300, jsonMode: true });
-
-    try {
-      const jsonMatch = response.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const plan = JSON.parse(jsonMatch[0]);
-        if (plan.skill && this.skills[plan.skill]) {
-          return plan;
-        }
-      }
-    } catch { /* parse error, fall through */ }
-
-    return null;
-  }
-
-  /**
-   * Tier 3: 关键词回退
-   */
   _fallbackPlan(input) {
-    // 分类检测
-    const categoryMap = {
-      '科技': 'analyze', '娱乐': 'analyze', '社会': 'analyze',
-      '财经': 'analyze', '体育': 'analyze', '国际': 'analyze',
-      '军事': 'analyze', '健康': 'analyze', '教育': 'analyze',
-    };
     const cat = this._extractCategory(input);
-    if (cat && categoryMap[cat]) {
+    if (cat) {
       return { skill: 'analyze', action: 'deep_analyze', params: { action: 'deep_analyze', topic: cat } };
     }
-
-    // 搜索意图
-    if (input.length > 2) {
+    if (input.length > 2 && input.length < 30) {
       return { skill: 'analyze', action: 'search', params: { action: 'search', topic: input } };
     }
-
     return null;
   }
 
-  /**
-   * Phase 2: Execute
-   */
-  async _executePlan(plan) {
-    const skill = this.skills[plan.skill];
-    if (!skill) {
-      return { success: false, error: `未找到 Skill: ${plan.skill}` };
-    }
+  // ── Phase 2: Execute (在 run() 中内联) ──
 
-    const validation = skill.validate(plan.params || {});
-    if (!validation.valid) {
-      return { success: false, error: validation.error };
-    }
+  // ── Phase 3: LLM 生成自然语言 ──
 
-    return await skill.run(plan.params || {});
-  }
+  async _generateResponse(userInput, plan, data) {
+    const skillName = { monitor: '热点监控', analyze: '热点分析', push: '订阅推送' }[plan.skill] || plan.skill;
+    const actionName = plan.action || '';
 
-  /**
-   * Phase 3: Reflect — 评估结果质量
-   */
-  _reflect(originalInput, result, history) {
-    // 错误
-    if (!result.success) {
-      // 如果是"未找到话题"，提示用户
-      if (result.error?.includes('未找到')) {
-        return {
-          satisfied: false,
-          needMoreInfo: true,
-          question: `未找到相关话题，请提供更具体的关键词或热点标题。`,
-        };
-      }
-      // 其他错误先返回
-      return { satisfied: true };
-    }
+    // 将结构化数据转为 JSON，方便 LLM 理解
+    const dataStr = JSON.stringify(data, null, 2).slice(0, 2000);
 
-    // 空数据
-    if (result.data && result.data.count === 0 && result.data.message) {
-      return { satisfied: true };
-    }
+    const prompt = PERSONA.replace('{hotspotContext}', this._buildHotspotContext());
 
-    // 满意
-    return { satisfied: true };
-  }
+    const messages = [
+      { role: 'system', content: prompt },
+      ...this.conversationHistory.slice(-6),
+      {
+        role: 'user',
+        content: `用户刚才说："${userInput}"\n\n系统通过「${skillName} > ${actionName}」取到了以下数据：\n${dataStr}\n\n请用你的人格化口吻，把这些数据变成一个自然亲切的回复。记住：不要列数据清单，要像朋友聊天一样组织语言。`,
+      },
+    ];
 
-  /**
-   * 格式化最终回答
-   */
-  _formatAnswer(result, plan) {
-    if (!result.success) {
-      return `操作失败: ${result.error}`;
-    }
-
-    const data = result.data;
-
-    switch (plan.skill) {
-      case 'monitor':
-        return data.message || JSON.stringify(data);
-
-      case 'analyze':
-        if (data.analysis) return data.analysis;
-        if (data.message) return data.message;
-        return `关于"${data.topic || '该话题'}"的分析结果:\n${JSON.stringify(data, null, 2)}`;
-
-      case 'push':
-        if (data.notification) {
-          return `${data.message}\n\n${data.notification.map((n, i) => `${i + 1}. ${n}`).join('\n')}`;
-        }
-        return data.message || JSON.stringify(data);
-
-      default:
-        return data.message || data.analysis || '操作完成';
+    try {
+      const response = await chat(messages, { temperature: 1.0, max_tokens: 600 });
+      return response.trim() || this._templateFallback(plan, data);
+    } catch (e) {
+      console.error('[MasterAgent] Response generation failed:', e.message);
+      return this._templateFallback(plan, data);
     }
   }
 
-  /**
-   * 从输入中提取话题关键词
-   */
+  async _generateErrorResponse(userInput, error) {
+    const prompt = PERSONA.replace('{hotspotContext}', this._buildHotspotContext());
+
+    const messages = [
+      { role: 'system', content: prompt },
+      {
+        role: 'user',
+        content: `用户说："${userInput}"，但系统查询时遇到了问题：${error}。请用友好的方式告诉用户这个情况，并建议替代方案。`,
+      },
+    ];
+
+    try {
+      const response = await chat(messages, { temperature: 0.8, max_tokens: 300 });
+      return response.trim() || `唔，出了点小状况——${error}。要不换个方式试试？`;
+    } catch {
+      return `唔，出了点小状况——${error}。要不换个方式试试？`;
+    }
+  }
+
+  async _freeChat(userInput) {
+    const ctx = this._buildHotspotContext();
+    const systemPrompt = ctx
+      ? FREE_CHAT_PROMPT + `\n\n当前热点快照：\n${ctx}`
+      : FREE_CHAT_PROMPT;
+
+    try {
+      const response = await chat(
+        [
+          { role: 'system', content: systemPrompt },
+          ...this.conversationHistory.slice(-6),
+          { role: 'user', content: userInput },
+        ],
+        { temperature: 1.0, max_tokens: 400 }
+      );
+      return response.trim() || '嘿嘿，我在呢～ 想看看最近有什么新鲜热点吗？';
+    } catch (e) {
+      console.error('[MasterAgent] Free chat failed:', e.message);
+      return '嘿嘿，我在呢～ 想看看最近有什么新鲜热点吗？';
+    }
+  }
+
+  // ── 辅助方法 ──
+
+  _buildHotspotContext() {
+    try {
+      const { rows } = db.getAllHotspots({ limit: 15 });
+      if (!rows.length) return '暂无热点数据。';
+      return rows.slice(0, 10).map((h, i) =>
+        `${i + 1}. [${h.category || '未分类'}] ${h.title}（热度 ${h.heat_score}，来源: ${(h.sources || []).map(s => s.source).join(', ')}）`
+      ).join('\n');
+    } catch { return ''; }
+  }
+
+  _templateFallback(plan, data) {
+    // LLM 不可用时的极简回退
+    const msg = data.message || '';
+    if (plan.skill === 'monitor') {
+      const items = data.items || [];
+      if (!items.length) return msg || '目前没有新的热点动态～';
+      const preview = items.slice(0, 5).map((h, i) => `${i + 1}. ${h.title} 🔥${h.heat_score || ''}`).join('\n');
+      return `来看看最近的热点 👀\n\n${preview}\n\n${msg}`;
+    }
+    if (plan.skill === 'analyze' && data.analysis) return data.analysis;
+    return msg || '这是查询结果，有什么想深入了解的吗？';
+  }
+
+  _saveHistory(userMsg, assistantMsg) {
+    this.conversationHistory.push(
+      { role: 'user', content: userMsg },
+      { role: 'assistant', content: assistantMsg }
+    );
+    if (this.conversationHistory.length > 20) {
+      this.conversationHistory = this.conversationHistory.slice(-20);
+    }
+  }
+
   _extractTopic(input) {
-    // 移除常见的动作词，提取剩余内容作为话题
     const cleaned = input
       .replace(/分析|解读|怎么看|评价|对比|预测|趋势|搜索|是什么|为什么|怎么样/g, '')
       .replace(/一下|帮我|请你|请|想知道|想了解/g, '')
       .trim();
-
     return cleaned || input.trim();
   }
 
-  /**
-   * 从输入中提取分类
-   */
   _extractCategory(input) {
     const cats = ['科技', '娱乐', '社会', '财经', '体育', '国际', '军事', '健康', '教育'];
     for (const cat of cats) {
@@ -332,9 +325,6 @@ export class MasterAgent {
     return null;
   }
 
-  /**
-   * 清除对话历史
-   */
   clearHistory() {
     this.conversationHistory = [];
   }

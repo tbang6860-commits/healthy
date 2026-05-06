@@ -1,16 +1,16 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User } from 'lucide-react';
+import { Send, Bot, User, Sparkles, Zap } from 'lucide-react';
 
 const QUICK = [
-  { text: '有什么新热点？' },
-  { text: '订阅科技类热点' },
-  { text: '热度上升最快的话题' },
-  { text: '今天热点总结' },
+  { text: '最近有什么新鲜事？', icon: Sparkles },
+  { text: '现在最火的话题是什么？', icon: Zap },
+  { text: '科技圈今天有什么大新闻？', icon: Bot },
+  { text: '给我推荐几个值得关注的热点', icon: Sparkles },
 ];
 
 export default function AgentChat() {
   const [messages, setMessages] = useState([
-    { role: 'agent', text: '你好！我是热点分析助手。\n\n试试对我发送：\n• "有什么新热点？"\n• "分析一下XX话题"\n• "订阅科技类热点"' },
+    { role: 'agent', text: '嗨！我是脉冲星 Pulsar 🌟\n\n你的专属热点管家～ 全网大事小事，我帮你盯着呢。\n\n想知道什么？直接问我，别客气！' },
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -27,11 +27,7 @@ export default function AgentChat() {
     try {
       const res = await fetch('/api/agent/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text }) });
       const data = await res.json();
-      let answer = data.answer || '出了点问题...';
-      if (data.plan) {
-        const names = { monitor: '热点监控', analyze: '热点分析', push: '订阅推送' };
-        answer += `\n\n— 由「${names[data.plan.skill] || data.plan.skill}」处理 · ${data.iterations} 轮`;
-      }
+      const answer = data.answer || '唔…信号不太好，能再说一遍吗？';
       setMessages(prev => [...prev, { role: 'agent', text: answer }]);
     } catch (e) {
       setMessages(prev => [...prev, { role: 'agent', text: `网络错误: ${e.message}` }]);
@@ -41,12 +37,16 @@ export default function AgentChat() {
   return (
     <div className="max-w-2xl mx-auto">
       <div className="flex flex-wrap gap-2 mb-5">
-        {QUICK.map((q, i) => (
-          <button key={i} onClick={() => setInput(q.text)}
-            className="text-xs px-3.5 py-2 rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] text-[#a0a0a0] hover:text-[#4cc9f0] hover:border-[#4cc9f0]/30 hover:bg-[#4cc9f0]/5 transition-all duration-200 min-h-[44px]">
-            {q.text}
-          </button>
-        ))}
+        {QUICK.map((q, i) => {
+          const Icon = q.icon;
+          return (
+            <button key={i} onClick={() => { setInput(q.text); }}
+              className="text-xs px-3.5 py-2 rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] text-[#a0a0a0] hover:text-[#4cc9f0] hover:border-[#4cc9f0]/30 hover:bg-[#4cc9f0]/5 transition-all duration-200 min-h-[44px] flex items-center gap-1.5">
+              <Icon size={13} />
+              {q.text}
+            </button>
+          );
+        })}
       </div>
 
       <div className="card p-4 mb-4 h-[420px] overflow-y-auto space-y-4" role="log" aria-label="对话消息">
