@@ -2,15 +2,17 @@ import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BarChart3 } from 'lucide-react';
 import HotCard from '../components/HotCard';
+import FilterToolbar from '../components/FilterToolbar';
 
 const CATS = ['全部', '科技', '娱乐', '社会', '财经', '体育', '国际', '军事', '健康', '教育'];
 
-export default function Dashboard({ hotspots, loading, onSelect }) {
+export default function Dashboard({ hotspots, loading, filters, onFilterChange, onSelect }) {
   const [activeCat, setActiveCat] = useState('全部');
 
   const filtered = useMemo(() => {
-    if (activeCat === '全部') return hotspots;
-    return hotspots.filter(h => h.category === activeCat);
+    let list = hotspots;
+    if (activeCat !== '全部') list = list.filter(h => h.category === activeCat);
+    return list;
   }, [hotspots, activeCat]);
 
   const stats = useMemo(() => ({
@@ -33,6 +35,12 @@ export default function Dashboard({ hotspots, loading, onSelect }) {
       <div className="space-y-6">
         <div className="flex items-center gap-3">
           <div className="h-5 w-28 skeleton rounded" />
+        </div>
+        {/* Skeleton toolbar */}
+        <div className="flex gap-2 flex-wrap">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="h-11 w-16 skeleton rounded-lg" />
+          ))}
         </div>
         <div className="flex gap-2 flex-wrap">
           {CATS.slice(0, 6).map(c => (
@@ -88,6 +96,9 @@ export default function Dashboard({ hotspots, loading, onSelect }) {
           </div>
         </div>
       </div>
+
+      {/* 筛选排序工具栏 */}
+      <FilterToolbar filters={filters} onChange={onFilterChange} />
 
       {/* Category filter */}
       <div className="flex gap-2 flex-wrap">

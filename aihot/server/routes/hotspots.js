@@ -5,13 +5,18 @@ const router = Router();
 
 // GET /api/hotspots
 router.get('/', (req, res) => {
-  const { source, category, page = 1, limit = 30, onlyNew } = req.query;
+  const { source, category, page = 1, limit = 30, onlyNew, sort, heatLevel, sentiment, trend, minSources } = req.query;
   const offset = (parseInt(page) - 1) * parseInt(limit);
 
   const { rows, total } = db.getAllHotspots({
     category,
     source,
     onlyNew: onlyNew === 'true',
+    heatLevel,
+    sentiment,
+    trend,
+    minSources: minSources ? parseInt(minSources) : undefined,
+    sort: sort || 'heat',
     limit: parseInt(limit),
     offset,
   });

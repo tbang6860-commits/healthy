@@ -16,10 +16,20 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [hasNew, setHasNew] = useState(false);
   const [newCount, setNewCount] = useState(0);
+  const [filters, setFilters] = useState({ sort: 'heat' });
 
-  const fetchHotspots = useCallback(async () => {
+  const fetchHotspots = useCallback(async (f = {}) => {
     try {
-      const res = await fetch(`${API}?limit=50`);
+      const params = new URLSearchParams({ limit: '50' });
+      if (f.sort) params.set('sort', f.sort);
+      if (f.source) params.set('source', f.source);
+      if (f.heatLevel) params.set('heatLevel', f.heatLevel);
+      if (f.sentiment) params.set('sentiment', f.sentiment);
+      if (f.trend) params.set('trend', f.trend);
+      if (f.minSources) params.set('minSources', f.minSources);
+      if (f.onlyNew) params.set('onlyNew', f.onlyNew);
+
+      const res = await fetch(`${API}?${params.toString()}`);
       const json = await res.json();
       setHotspots(json.data || []);
       setHasNew(json.hasNew);
@@ -31,12 +41,18 @@ export default function App() {
     }
   }, []);
 
-  useEffect(() => { fetchHotspots(); }, [fetchHotspots]);
+  const handleFilterChange = useCallback((newFilters) => {
+    setFilters(newFilters);
+    setLoading(true);
+    fetchHotspots(newFilters);
+  }, [fetchHotspots]);
+
+  useEffect(() => { fetchHotspots(filters); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    const timer = setInterval(fetchHotspots, 30 * 60 * 1000);
+    const timer = setInterval(() => fetchHotspots(filters), 30 * 60 * 1000);
     return () => clearInterval(timer);
-  }, [fetchHotspots]);
+  }, [fetchHotspots, filters]);
 
   useNotifications({ hasNew, newCount, hotspots });
 
@@ -45,7 +61,7 @@ export default function App() {
     try {
       await fetch('/api/sources/refresh', { method: 'POST' });
       await new Promise(r => setTimeout(r, 5000));
-      await fetchHotspots();
+      await fetchHotspots(filters);
     } catch (e) {
       console.error('Refresh failed:', e);
     }
@@ -68,6 +84,8 @@ export default function App() {
           <Dashboard
             hotspots={hotspots}
             loading={loading}
+            filters={filters}
+            onFilterChange={handleFilterChange}
             onSelect={(id) => { setSelectedId(id); setPage('detail'); }}
           />
         )}

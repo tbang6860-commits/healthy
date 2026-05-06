@@ -27,13 +27,62 @@ function save(filePath, data) {
 }
 
 const db = {
-  getAllHotspots({ category, source, onlyNew, limit, offset } = {}) {
+  getAllHotspots({ category, source, onlyNew, heatLevel, sentiment, trend, minSources, sort, limit, offset } = {}) {
     let rows = load(HOTSPOTS_FILE);
+
+    // 分类筛选
     if (category) rows = rows.filter(r => r.category === category);
+    // 来源筛选
     if (source) rows = rows.filter(r => r.sources?.some(s => s.source === source));
+    // 只看新热点
     if (onlyNew) rows = rows.filter(r => r.is_new === 1);
+    // 热度档位
+    if (heatLevel === 'high') rows = rows.filter(r => r.heat_score > 70);
+    if (heatLevel === 'medium') rows = rows.filter(r => r.heat_score >= 30 && r.heat_score <= 70);
+    if (heatLevel === 'low') rows = rows.filter(r => r.heat_score < 30);
+    // 情感筛选
+    if (sentiment) rows = rows.filter(r => r.sentiment === sentiment);
+    // 动态状态
+    if (trend === 'new') rows = rows.filter(r => r.is_new === 1);
+    if (trend === 'rising') rows = rows.filter(r => r.is_rising === 1);
+    // 跨平台：至少 N 个来源
+    if (minSources && parseInt(minSources) >= 2) {
+      rows = rows.filter(r => {
+        const srcs = typeof r.sources === 'string' ? JSON.parse(r.sources) : (r.sources || []);
+        return srcs.length >= parseInt(minSources);
+      });
+    }
+
     const total = rows.length;
-    rows.sort((a, b) => b.heat_score - a.heat_score);
+
+    // 排序
+    switch (sort) {
+      case 'newest':
+        rows.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+        break;
+      case 'rising': {
+        const deltas = this.getTrendDeltas();
+        const deltaMap = {};
+        deltas.forEach(d => { deltaMap[d.hotspot_id] = d.delta; });
+        rows.sort((a, b) => (deltaMap[b.id] || 0) - (deltaMap[a.id] || 0));
+        break;
+      }
+      case 'cross_source':
+        rows.sort((a, b) => {
+          const sa = typeof a.sources === 'string' ? JSON.parse(a.sources) : (a.sources || []);
+          const sb = typeof b.sources === 'string' ? JSON.parse(b.sources) : (b.sources || []);
+          return sb.length - sa.length;
+        });
+        break;
+      case 'sentiment':
+        rows.sort((a, b) => (b.sentiment_score || 0) - (a.sentiment_score || 0));
+        break;
+      case 'heat':
+      default:
+        rows.sort((a, b) => b.heat_score - a.heat_score);
+        break;
+    }
+
     if (offset !== undefined && limit !== undefined) {
       rows = rows.slice(offset, offset + limit);
     }
