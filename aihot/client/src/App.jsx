@@ -33,13 +33,11 @@ export default function App() {
 
   useEffect(() => { fetchHotspots(); }, [fetchHotspots]);
 
-  // 30 分钟自动刷新
   useEffect(() => {
     const timer = setInterval(fetchHotspots, 30 * 60 * 1000);
     return () => clearInterval(timer);
   }, [fetchHotspots]);
 
-  // 浏览器通知
   useNotifications({ hasNew, newCount, hotspots });
 
   const handleRefresh = async () => {
@@ -54,40 +52,49 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen">
-      <Navbar
-        page={page}
-        onPageChange={setPage}
-        hasNew={hasNew}
-        newCount={newCount}
-        onRefresh={handleRefresh}
-        loading={loading}
-      />
+    <div className="min-h-screen relative">
+      {/* Animated Background */}
+      <div className="bg-grid" />
+      <div className="orb orb-1" />
+      <div className="orb orb-2" />
+      <div className="orb orb-3" />
 
-      <main className="max-w-7xl mx-auto px-4 py-6">
-        {page === 'dashboard' && (
-          <Dashboard
-            hotspots={hotspots}
-            loading={loading}
-            onSelect={(id) => { setSelectedId(id); setPage('detail'); }}
-          />
-        )}
-        {page === 'detail' && (
-          <TopicDetail
-            id={selectedId}
-            onBack={() => setPage('dashboard')}
-          />
-        )}
-        {page === 'agent' && (
-          <AgentChat />
-        )}
-        {page === 'trends' && (
-          <Trends hotspots={hotspots} />
-        )}
-        {page === 'settings' && (
-          <Settings />
-        )}
-      </main>
+      {/* Main Content */}
+      <div className="relative z-10">
+        <Navbar
+          page={page}
+          onPageChange={setPage}
+          hasNew={hasNew}
+          newCount={newCount}
+          onRefresh={handleRefresh}
+          loading={loading}
+        />
+
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+          {page === 'dashboard' && (
+            <Dashboard
+              hotspots={hotspots}
+              loading={loading}
+              onSelect={(id) => { setSelectedId(id); setPage('detail'); }}
+            />
+          )}
+          {page === 'detail' && (
+            <TopicDetail
+              id={selectedId}
+              onBack={() => setPage('dashboard')}
+            />
+          )}
+          {page === 'agent' && (
+            <AgentChat />
+          )}
+          {page === 'trends' && (
+            <Trends hotspots={hotspots} />
+          )}
+          {page === 'settings' && (
+            <Settings />
+          )}
+        </main>
+      </div>
     </div>
   );
 }
