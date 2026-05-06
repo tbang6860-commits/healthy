@@ -1,0 +1,19 @@
+{
+  "name": "aihot-server",
+  "version": "1.0.0",
+  "description": "AI 热点聚合分析平台 - 后端",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+        "axios": "^1.7.0",
+    "openai": "^4.77.0",
+    "dotenv": "^16.4.0",
+    "node-cron": "^3.0.3",
+    "cors": "^2.8.5"
+  }
+}

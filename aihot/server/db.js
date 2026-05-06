@@ -1,0 +1,125 @@
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const DATA_DIR = path.join(__dirname, 'data');
+const HOTSPOTS_FILE = path.join(DATA_DIR, 'hotspots.json');
+const SNAPSHOTS_FILE = path.join(DATA_DIR, 'snapshots.json');
+
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
+function load(filePath) {
+  try {
+    if (fs.existsSync(filePath)) {
+      return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    }
+  } catch (e) {
+    console.error(`[DB] Failed to load ${filePath}:`, e.message);
+  }
+  return [];
+}
+
+function save(filePath, data) {
+  fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+}
+
+const db = {
+  getAllHotspots({ category, source, onlyNew, limit, offset } = {}) {
+    let rows = load(HOTSPOTS_FILE);
+    if (category) rows = rows.filter(r => r.category === category);
+    if (source) rows = rows.filter(r => r.sources?.some(s => s.source === source));
+    if (onlyNew) rows = rows.filter(r => r.is_new === 1);
+    const total = rows.length;
+    rows.sort((a, b) => b.heat_score - a.heat_score);
+    if (offset !== undefined && limit !== undefined) {
+      rows = rows.slice(offset, offset + limit);
+    }
+    return { rows, total };
+  },
+
+  getHotspotById(id) {
+    return load(HOTSPOTS_FILE).find(r => r.id === parseInt(id)) || null;
+  },
+
+  getNewCount() {
+    return load(HOTSPOTS_FILE).filter(r => r.is_new === 1).length;
+  },
+
+  replaceAllHotspots(newRows) {
+    const oldRows = load(HOTSPOTS_FILE);
+    const oldTitles = new Set(oldRows.map(r => r.title));
+    const now = new Date().toISOString();
+    const marked = newRows.map((row, i) => ({
+      id: i + 1,
+      ...row,
+      is_new: oldTitles.has(row.title) ? 0 : 1,
+      is_rising: 0,
+      snapshot_time: now,
+      created_at: row.created_at || now,
+      updated_at: now,
+    }));
+    save(HOTSPOTS_FILE, marked);
+    return marked;
+  },
+
+  getTrends(hours = 24) {
+    const snapshots = load(SNAPSHOTS_FILE);
+    const hotspots = load(HOTSPOTS_FILE);
+    const cutoff = new Date(Date.now() - hours * 3600 * 1000).toISOString();
+    return snapshots
+      .filter(s => s.snapshot_time >= cutoff)
+      .map(s => {
+        const h = hotspots.find(r => r.id === s.hotspot_id);
+        return { ...s, title: h?.title || '' };
+      })
+      .sort((a, b) => a.snapshot_time.localeCompare(b.snapshot_time));
+  },
+
+  getTrendDeltas(hours = 24) {
+    const trends = this.getTrends(hours);
+    const hotspots = load(HOTSPOTS_FILE);
+
+    // 按 hotspot_id 分组，取每组最早和最晚的快照计算 delta
+    const groups = {};
+    for (const s of trends) {
+      if (!groups[s.hotspot_id]) groups[s.hotspot_id] = [];
+      groups[s.hotspot_id].push(s);
+    }
+
+    const deltas = [];
+    for (const [hotspot_id, snaps] of Object.entries(groups)) {
+      if (snaps.length < 2) continue;
+      const first = snaps[0];
+      const last = snaps[snaps.length - 1];
+      const h = hotspots.find(r => r.id === parseInt(hotspot_id));
+      deltas.push({
+        hotspot_id: parseInt(hotspot_id),
+        title: h?.title || '',
+        heat_score: last.heat_score,
+        delta: last.heat_score - first.heat_score,
+        snapshot_count: snaps.length,
+      });
+    }
+
+    return deltas;
+  },
+
+  addSnapshots(snapshotRows) {
+    const snapshots = load(SNAPSHOTS_FILE);
+    const baseId = snapshots.length ? Math.max(...snapshots.map(s => s.id)) + 1 : 1;
+    const now = new Date().toISOString();
+    const newSnapshots = snapshotRows.map((s, i) => ({
+      id: baseId + i,
+      ...s,
+      snapshot_time: now,
+    }));
+    snapshots.push(...newSnapshots);
+    save(SNAPSHOTS_FILE, snapshots);
+    return newSnapshots;
+  },
+};
+
+export default db;
