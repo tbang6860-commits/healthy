@@ -37,14 +37,28 @@ const db = {
     // 只看新热点
     if (onlyNew) rows = rows.filter(r => r.is_new === 1);
     // 热度档位
-    if (heatLevel === 'high') rows = rows.filter(r => r.heat_score > 70);
-    if (heatLevel === 'medium') rows = rows.filter(r => r.heat_score >= 30 && r.heat_score <= 70);
-    if (heatLevel === 'low') rows = rows.filter(r => r.heat_score < 30);
+    // 热度档位 — 基于当前数据分布的动态百分位阈值（前33%=高热，后33%=低热，中间=中热）
+    if (heatLevel) {
+      const sortedScores = [...rows].map(r => r.heat_score).sort((a, b) => b - a);
+      const n = sortedScores.length;
+      const p33 = sortedScores[Math.floor(n * 0.33)] ?? 70;
+      const p67 = sortedScores[Math.floor(n * 0.67)] ?? 30;
+      if (heatLevel === 'high') rows = rows.filter(r => r.heat_score >= p33);
+      else if (heatLevel === 'medium') rows = rows.filter(r => r.heat_score >= p67 && r.heat_score < p33);
+      else if (heatLevel === 'low') rows = rows.filter(r => r.heat_score < p67);
+    }
     // 情感筛选
     if (sentiment) rows = rows.filter(r => r.sentiment === sentiment);
     // 动态状态
-    if (trend === 'new') rows = rows.filter(r => r.is_new === 1);
-    if (trend === 'rising') rows = rows.filter(r => r.is_rising === 1);
+    if (trend === 'new') {
+      const oneDayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+      rows = rows.filter(r => r.is_new === 1 || (r.first_seen_at && r.first_seen_at >= oneDayAgo));
+    }
+    if (trend === 'rising') {
+      const deltas = this.getTrendDeltas(24);
+      const risingIds = new Set(deltas.filter(d => d.delta > 0).map(d => d.hotspot_id));
+      rows = rows.filter(r => risingIds.has(r.id));
+    }
     // 跨平台：至少 N 个来源
     if (minSources && parseInt(minSources) >= 2) {
       rows = rows.filter(r => {
@@ -99,17 +113,22 @@ const db = {
 
   replaceAllHotspots(newRows) {
     const oldRows = load(HOTSPOTS_FILE);
-    const oldTitles = new Set(oldRows.map(r => r.title));
+    const oldMap = new Map(oldRows.map(r => [r.title, r]));
     const now = new Date().toISOString();
-    const marked = newRows.map((row, i) => ({
-      id: i + 1,
-      ...row,
-      is_new: oldTitles.has(row.title) ? 0 : 1,
-      is_rising: 0,
-      snapshot_time: now,
-      created_at: row.created_at || now,
-      updated_at: now,
-    }));
+    const marked = newRows.map((row, i) => {
+      const old = oldMap.get(row.title);
+      return {
+        id: i + 1,
+        ...row,
+        is_new: old ? 0 : 1,
+        // rising = 之前存在 且 本次热度 > 上次热度
+        is_rising: (old && row.heat_score > (old.heat_score || 0)) ? 1 : 0,
+        first_seen_at: old?.first_seen_at || row.first_seen_at || now,
+        snapshot_time: now,
+        created_at: row.created_at || now,
+        updated_at: now,
+      };
+    });
     save(HOTSPOTS_FILE, marked);
     return marked;
   },

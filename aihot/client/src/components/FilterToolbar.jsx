@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Flame, Clock, TrendingUp, Globe, Heart, X, ChevronDown, SlidersHorizontal } from 'lucide-react';
+import { Flame, Clock, TrendingUp, Globe, Heart, X, ChevronDown, SlidersHorizontal, Check } from 'lucide-react';
 
 const SORTS = [
   { key: 'heat', label: '最热', icon: Flame },
@@ -43,12 +43,59 @@ const SOURCES = [
 export default function FilterToolbar({ filters, onChange }) {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false);
+  const [collapseOverflow, setCollapseOverflow] = useState(false);
+  const toolbarRef = useRef(null);
+  const sourceRef = useRef(null);
+  const sourceBtnRef = useRef(null);
+  const [dropdownStyle, setDropdownStyle] = useState({});
 
-  const set = (key, value) => onChange({ ...filters, [key]: value });
-  const toggle = (key, value) => {
-    const current = filters[key];
-    set(key, current === value ? undefined : value);
-  };
+  const set = useCallback((key, value) => {
+    onChange(prev => ({ ...prev, [key]: value }));
+  }, [onChange]);
+
+  const toggle = useCallback((key, value) => {
+    onChange(prev => {
+      const current = prev[key];
+      return { ...prev, [key]: current === value ? undefined : value };
+    });
+  }, [onChange]);
+
+  // 点击外部关闭来源下拉
+  useEffect(() => {
+    if (!sourceOpen) return;
+    const handler = (e) => {
+      if (sourceRef.current && !sourceRef.current.contains(e.target)) {
+        setSourceOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler, true);
+    return () => document.removeEventListener('mousedown', handler, true);
+  }, [sourceOpen]);
+
+  // 点击工具栏外部关闭高级区
+  useEffect(() => {
+    if (!showAdvanced) return;
+    const handler = (e) => {
+      if (toolbarRef.current && !toolbarRef.current.contains(e.target)) {
+        setShowAdvanced(false);
+        setSourceOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler, true);
+    return () => document.removeEventListener('mousedown', handler, true);
+  }, [showAdvanced]);
+
+  // 计算来源下拉菜单位置（相对于按钮）
+  useEffect(() => {
+    if (sourceOpen && sourceBtnRef.current) {
+      const rect = sourceBtnRef.current.getBoundingClientRect();
+      setDropdownStyle({
+        position: 'fixed',
+        top: rect.bottom + 4,
+        left: rect.left,
+      });
+    }
+  }, [sourceOpen]);
 
   // 计算活跃筛选数
   const activeCount = [
@@ -62,8 +109,12 @@ export default function FilterToolbar({ filters, onChange }) {
   const btnInactive = 'text-[#a0a0a0] hover:text-white hover:bg-[#1a1a1a] border border-transparent';
   const btnActive = 'bg-[#4cc9f0]/10 text-[#4cc9f0] border border-[#4cc9f0]/20';
 
+  const hasSource = !!filters.source;
+  const hasMinSources = filters.minSources === '2';
+  const hasOnlyNew = filters.onlyNew === 'true';
+
   return (
-    <div className="space-y-3 select-none">
+    <div className="space-y-3 select-none" ref={toolbarRef}>
       {/* ── 排序切换栏 ── */}
       <div className="flex gap-2 flex-wrap" role="radiogroup" aria-label="排序方式">
         {SORTS.map(s => {
@@ -156,10 +207,13 @@ export default function FilterToolbar({ filters, onChange }) {
           onClick={() => setShowAdvanced(!showAdvanced)}
           aria-expanded={showAdvanced}
           aria-label="高级筛选"
-          className={`${btnBase} text-[11px] ${showAdvanced ? btnActive : btnInactive} ml-auto`}
+          className={`${btnBase} text-[11px] ${showAdvanced || hasSource || hasMinSources || hasOnlyNew ? btnActive : btnInactive} ml-auto`}
         >
           <SlidersHorizontal size={13} />
           高级
+          {(hasSource || hasMinSources || hasOnlyNew) && (
+            <span className="w-1.5 h-1.5 rounded-full bg-[#4cc9f0]" />
+          )}
           <ChevronDown size={12} className={`transition-transform duration-200 ${showAdvanced ? 'rotate-180' : ''}`} />
         </button>
 
@@ -184,81 +238,101 @@ export default function FilterToolbar({ filters, onChange }) {
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.2, ease: 'easeInOut' }}
-            className="overflow-hidden"
+            onAnimationStart={() => setCollapseOverflow(true)}
+            onAnimationComplete={() => setCollapseOverflow(false)}
+            className={collapseOverflow ? 'overflow-hidden' : ''}
           >
             <div className="pt-3 flex gap-4 flex-wrap items-center">
-              {/* 来源多选 */}
-              <div className="relative">
-                <button
-                  onClick={() => setSourceOpen(!sourceOpen)}
-                  aria-expanded={sourceOpen}
-                  aria-haspopup="listbox"
-                  className={`${btnBase} ${filters.source ? btnActive : btnInactive}`}
-                >
-                  来源
-                  {filters.source ? `: ${SOURCES.find(s => s.key === filters.source)?.label || filters.source}` : '选择'}
-                  <ChevronDown size={12} className={`transition-transform duration-200 ${sourceOpen ? 'rotate-180' : ''}`} />
-                </button>
-                <AnimatePresence>
-                  {sourceOpen && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -4 }}
-                      transition={{ duration: 0.15 }}
-                      role="listbox"
-                      className="absolute top-full mt-1 z-50 bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-1.5 shadow-lg shadow-black/40 min-w-[140px]"
-                    >
-                      <button
-                        role="option"
-                        aria-selected={!filters.source}
-                        onClick={() => { set('source', undefined); setSourceOpen(false); }}
-                        className={`w-full text-left text-xs px-3 py-2 rounded-lg transition-colors duration-150 ${!filters.source ? 'bg-[#4cc9f0]/10 text-[#4cc9f0]' : 'text-[#a0a0a0] hover:text-white'}`}
-                      >
-                        全部来源
-                      </button>
-                      {SOURCES.map(s => (
-                        <button
-                          key={s.key}
-                          role="option"
-                          aria-selected={filters.source === s.key}
-                          onClick={() => { set('source', s.key); setSourceOpen(false); }}
-                          className={`w-full text-left text-xs px-3 py-2 rounded-lg transition-colors duration-150 ${filters.source === s.key ? 'bg-[#4cc9f0]/10 text-[#4cc9f0]' : 'text-[#a0a0a0] hover:text-white'}`}
-                        >
-                          {s.label}
-                        </button>
-                      ))}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-
-              {/* 跨平台开关 */}
+              {/* 来源选择 — 触发按钮（下拉菜单通过 Portal 方式渲染在外部） */}
               <button
-                aria-pressed={filters.minSources === '2'}
-                onClick={() => set('minSources', filters.minSources === '2' ? undefined : '2')}
-                className={`${btnBase} ${filters.minSources === '2' ? btnActive : btnInactive}`}
+                ref={sourceBtnRef}
+                onClick={() => setSourceOpen(!sourceOpen)}
+                aria-expanded={sourceOpen}
+                aria-haspopup="listbox"
+                className={`${btnBase} relative ${hasSource ? btnActive : btnInactive}`}
               >
+                来源
+                {hasSource ? `: ${SOURCES.find(s => s.key === filters.source)?.label || filters.source}` : '选择'}
+                <ChevronDown size={12} className={`transition-transform duration-200 ${sourceOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {/* 跨平台开关 — 选中时显示 ✓ 提示可取消 */}
+              <button
+                aria-pressed={hasMinSources}
+                onClick={() => toggle('minSources', '2')}
+                className={`${btnBase} ${hasMinSources ? btnActive : btnInactive}`}
+                title={hasMinSources ? '点击取消跨平台筛选' : '只看多平台报道的话题'}
+              >
+                {hasMinSources ? <Check size={13} /> : null}
                 跨平台话题
               </button>
 
-              {/* 只看新热点 */}
+              {/* 只看新热点 — 选中时显示 ✓ 提示可取消 */}
               <button
-                aria-pressed={filters.onlyNew === 'true'}
-                onClick={() => set('onlyNew', filters.onlyNew === 'true' ? undefined : 'true')}
-                className={`${btnBase} ${filters.onlyNew === 'true' ? btnActive : btnInactive}`}
+                aria-pressed={hasOnlyNew}
+                onClick={() => toggle('onlyNew', 'true')}
+                className={`${btnBase} ${hasOnlyNew ? btnActive : btnInactive}`}
+                title={hasOnlyNew ? '点击取消新热点筛选' : '只看首次出现的热点'}
               >
+                {hasOnlyNew ? <Check size={13} /> : null}
                 只看新热点
               </button>
-            </div>
 
-            {/* 关闭高级区点击外部 */}
-            {showAdvanced && (
-              <div className="fixed inset-0 z-[-1]" onClick={() => setShowAdvanced(false)} />
-            )}
+              {/* 返回全部 — 仅在高级筛选激活时显示 */}
+              {(hasSource || hasMinSources || hasOnlyNew) && (
+                <button
+                  onClick={() => {
+                    set('source', undefined);
+                    set('minSources', undefined);
+                    set('onlyNew', undefined);
+                  }}
+                  className={`${btnBase} text-[11px] px-2.5 text-[#a0a0a0] hover:text-white hover:bg-[#1a1a1a] border border-transparent`}
+                >
+                  <X size={12} />
+                  重置高级筛选项
+                </button>
+              )}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ── 来源下拉菜单（渲染在折叠区域外部，避免被 overflow-hidden 裁剪） ── */}
+      <AnimatePresence>
+        {sourceOpen && (
+          <motion.div
+            ref={sourceRef}
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.15 }}
+            role="listbox"
+            style={dropdownStyle}
+            className="z-[100] bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-1.5 shadow-xl shadow-black/40 min-w-[140px]"
+          >
+            <button
+              role="option"
+              aria-selected={!hasSource}
+              onClick={() => { set('source', undefined); setSourceOpen(false); }}
+              className={`w-full text-left text-xs px-3 py-2 rounded-lg transition-colors duration-150 ${!hasSource ? 'bg-[#4cc9f0]/10 text-[#4cc9f0]' : 'text-[#a0a0a0] hover:text-white'}`}
+            >
+              全部来源
+            </button>
+            {SOURCES.map(s => (
+              <button
+                key={s.key}
+                role="option"
+                aria-selected={filters.source === s.key}
+                onClick={() => { set('source', s.key); setSourceOpen(false); }}
+                className={`w-full text-left text-xs px-3 py-2 rounded-lg transition-colors duration-150 ${filters.source === s.key ? 'bg-[#4cc9f0]/10 text-[#4cc9f0]' : 'text-[#a0a0a0] hover:text-white'}`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
     </div>
   );
 }

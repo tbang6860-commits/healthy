@@ -61,11 +61,34 @@ export default function Dashboard({ hotspots, loading, filters, onFilterChange, 
     );
   }
 
+  const hasActiveFilters = filters.heatLevel || filters.sentiment || filters.trend || filters.source || filters.minSources || filters.onlyNew || (filters.sort && filters.sort !== 'heat');
+
   if (!hotspots.length) {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-4">
-        <BarChart3 size={32} className="text-[var(--text-muted)]" />
-        <p className="text-[var(--text-secondary)] text-sm">暂无热点数据，点击右上角刷新按钮获取最新热点</p>
+        <BarChart3 size={32} className="text-[#8a8a8a]" />
+        <div className="text-center">
+          <p className="text-[#a0a0a0] text-sm">暂无热点数据</p>
+          {hasActiveFilters && (
+            <p className="text-[#6a6a6a] text-xs mt-1">当前筛选条件可能过于严格，试试放宽条件</p>
+          )}
+        </div>
+        <div className="flex gap-2.5 flex-wrap justify-center">
+          {hasActiveFilters && (
+            <button
+              onClick={() => onFilterChange({ sort: 'heat' })}
+              className="text-xs px-4 py-2.5 rounded-lg font-medium transition-all duration-200 text-[#4cc9f0] bg-[#4cc9f0]/10 border border-[#4cc9f0]/20 hover:bg-[#4cc9f0]/20"
+            >
+              清除所有筛选
+            </button>
+          )}
+          <button
+            onClick={() => onFilterChange({ sort: 'heat' })}
+            className="text-xs px-4 py-2.5 rounded-lg font-medium transition-all duration-200 text-[#a0a0a0] hover:text-white hover:bg-[#1a1a1a] border border-transparent"
+          >
+            重新加载数据
+          </button>
+        </div>
       </div>
     );
   }
@@ -137,9 +160,28 @@ export default function Dashboard({ hotspots, loading, filters, onFilterChange, 
       </AnimatePresence>
 
       {filtered.length === 0 && (
-        <div className="text-center py-16">
-          <BarChart3 size={28} className="text-[#8a8a8a] mx-auto mb-3" />
-          <p className="text-[#a0a0a0] text-sm">该分类暂无热点数据</p>
+        <div className="text-center py-16 space-y-4">
+          <BarChart3 size={28} className="text-[#8a8a8a] mx-auto" />
+          <div>
+            <p className="text-[#a0a0a0] text-sm">该分类暂无热点数据</p>
+            <p className="text-[#6a6a6a] text-xs mt-1">试试切换分类或调整筛选条件</p>
+          </div>
+          <div className="flex gap-2 justify-center flex-wrap">
+            {activeCat !== '全部' && (
+              <button
+                onClick={() => setActiveCat('全部')}
+                className="text-xs px-4 py-2 rounded-lg font-medium transition-all duration-200 text-[#4cc9f0] hover:bg-[#4cc9f0]/10 border border-[#4cc9f0]/20"
+              >
+                查看全部类别
+              </button>
+            )}
+            <button
+              onClick={() => onFilterChange({ sort: 'heat' })}
+              className="text-xs px-4 py-2 rounded-lg font-medium transition-all duration-200 text-[#a0a0a0] hover:text-white hover:bg-[#1a1a1a] border border-transparent"
+            >
+              清除所有筛选
+            </button>
+          </div>
         </div>
       )}
     </div>

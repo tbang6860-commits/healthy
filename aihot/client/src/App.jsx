@@ -41,10 +41,13 @@ export default function App() {
     }
   }, []);
 
-  const handleFilterChange = useCallback((newFilters) => {
-    setFilters(newFilters);
-    setLoading(true);
-    fetchHotspots(newFilters);
+  const handleFilterChange = useCallback((updater) => {
+    setFilters(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      setLoading(true);
+      fetchHotspots(next);
+      return next;
+    });
   }, [fetchHotspots]);
 
   useEffect(() => { fetchHotspots(filters); }, []); // eslint-disable-line react-hooks/exhaustive-deps
