@@ -1,5 +1,6 @@
 import HeatBadge from './HeatBadge';
 import SourceTag from './SourceTag';
+import PulseRing from './PulseRing';
 
 export default function HotCard({ hotspot, onClick, span = '', index = 0 }) {
   const { title, heat_score, sources, is_new, summary } = hotspot;
@@ -19,9 +20,11 @@ export default function HotCard({ hotspot, onClick, span = '', index = 0 }) {
       aria-label={`查看 ${title} 详情`}
       onClick={() => onClick?.(hotspot.id)}
       onKeyDown={handleKeyDown}
-      className="animate-in card group cursor-pointer h-full p-2 flex flex-col gap-3"
+      className="animate-in card group cursor-pointer h-full p-2 flex flex-col gap-3 relative"
       style={{ animationDelay: `${index * 40}ms` }}
     >
+      {is_new && <PulseRing />}
+
       {/* Top row: source tags + indicators */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
@@ -35,7 +38,7 @@ export default function HotCard({ hotspot, onClick, span = '', index = 0 }) {
           )}
         </div>
         {is_new && (
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#4cc9f0]/12 text-[#4cc9f0] border border-[#4cc9f0]/20 font-medium">
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#ff4d4f]/12 text-[#ff4d4f] border border-[#ff4d4f]/20 font-medium">
             NEW
           </span>
         )}

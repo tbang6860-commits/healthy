@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { runFetchCycle } from '../scheduler.js';
+import { rateLimitMiddleware } from '../middleware.js';
 
 const router = Router();
 
@@ -31,7 +32,7 @@ router.get('/', (_req, res) => {
 });
 
 // POST /api/sources/refresh - 手动触发一轮完整刷新
-router.post('/refresh', async (_req, res) => {
+router.post('/refresh', rateLimitMiddleware(60000, 1), async (_req, res) => {
   try {
     // 异步触发，不等待
     runFetchCycle().catch(err => console.error('[Refresh] Error:', err.message));

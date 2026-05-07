@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, ExternalLink, Activity } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Activity, Share2 } from 'lucide-react';
 import SourceTag from '../components/SourceTag';
 import HeatBadge from '../components/HeatBadge';
 import TrendChart from '../components/TrendChart';
@@ -16,6 +16,11 @@ export default function TopicDetail({ id, onBack }) {
       .then(data => { setHotspot(data); setLoading(false); })
       .catch(() => setLoading(false));
   }, [id]);
+
+  const handleShare = () => {
+    if (!hotspot) return;
+    generateShareCard(hotspot);
+  };
 
   if (loading) {
     return (
@@ -89,6 +94,14 @@ export default function TopicDetail({ id, onBack }) {
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={handleShare}
+              className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-lg bg-[#0f0f0f] text-[#a0a0a0] border border-[#2a2a2a] hover:border-[#4cc9f0]/30 hover:text-white transition-all"
+              title="生成分享卡片"
+            >
+              <Share2 size={11} />
+              分享
+            </button>
             {(sources || []).map((s, i) => (
               <a key={i} href={s.url} target="_blank" rel="noopener noreferrer"
                 className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-lg bg-[#0f0f0f] text-[#a0a0a0] border border-[#2a2a2a] hover:border-[#4cc9f0]/30 hover:text-white transition-all">
@@ -108,4 +121,133 @@ export default function TopicDetail({ id, onBack }) {
       )}
     </div>
   );
+}
+
+// ── Canvas 分享卡片生成 ──
+function generateShareCard(h) {
+  const W = 800;
+  const H = 450;
+  const canvas = document.createElement('canvas');
+  canvas.width = W * 2;
+  canvas.height = H * 2;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(2, 2);
+
+  // 背景
+  ctx.fillStyle = '#0f0f0f';
+  ctx.fillRect(0, 0, W, H);
+
+  // 顶部装饰线
+  ctx.fillStyle = '#4cc9f0';
+  ctx.fillRect(0, 0, W, 4);
+
+  // 辅助：文字换行
+  function wrapText(text, x, y, maxWidth, lineHeight, maxLines) {
+    const chars = text.split('');
+    let line = '';
+    let count = 0;
+    for (let i = 0; i < chars.length; i++) {
+      const test = line + chars[i];
+      const metrics = ctx.measureText(test);
+      if (metrics.width > maxWidth && line.length > 0) {
+        if (count >= maxLines - 1) {
+          ctx.fillText(line.slice(0, -1) + '…', x, y + count * lineHeight);
+          return;
+        }
+        ctx.fillText(line, x, y + count * lineHeight);
+        line = chars[i];
+        count++;
+      } else {
+        line = test;
+      }
+    }
+    ctx.fillText(line, x, y + count * lineHeight);
+  }
+
+  const pad = 40;
+  let y = 50;
+
+  // 分类标签背景
+  if (h.category) {
+    ctx.font = 'bold 14px "PingFang SC", "Microsoft YaHei", sans-serif';
+    const text = h.category;
+    const tw = ctx.measureText(text).width;
+    ctx.fillStyle = 'rgba(76, 201, 240, 0.12)';
+    ctx.strokeStyle = 'rgba(76, 201, 240, 0.25)';
+    ctx.lineWidth = 1;
+    const tagH = 26;
+    const tagR = 13;
+    const tagX = pad;
+    const tagY = y;
+    ctx.beginPath();
+    ctx.roundRect(tagX, tagY, tw + 20, tagH, tagR);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#4cc9f0';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, tagX + 10, tagY + tagH / 2 + 1);
+    y += 44;
+  }
+
+  // 标题
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 28px "PingFang SC", "Microsoft YaHei", sans-serif';
+  wrapText(h.title || '', pad, y, W - pad * 2, 36, 2);
+  y += 88;
+
+  // 热度
+  ctx.fillStyle = '#a0a0a0';
+  ctx.font = '16px "JetBrains Mono", monospace';
+  ctx.fillText(`热度指数 ${Math.round(h.heat_score || 0)}°`, pad, y);
+
+  // 热度条背景
+  const barY = y + 10;
+  const barW = 200;
+  const barH = 6;
+  ctx.fillStyle = '#2a2a2a';
+  ctx.beginPath();
+  ctx.roundRect(pad, barY, barW, barH, 3);
+  ctx.fill();
+
+  // 热度条前景
+  const heatPct = Math.min((h.heat_score || 0) / 100, 1);
+  const grad = ctx.createLinearGradient(pad, 0, pad + barW, 0);
+  grad.addColorStop(0, '#4cc9f0');
+  grad.addColorStop(1, '#4361ee');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.roundRect(pad, barY, barW * heatPct, barH, 3);
+  ctx.fill();
+
+  y += 44;
+
+  // 摘要
+  if (h.summary) {
+    ctx.fillStyle = '#a0a0a0';
+    ctx.font = '16px "PingFang SC", "Microsoft YaHei", sans-serif';
+    wrapText(h.summary, pad, y, W - pad * 2, 26, 3);
+    y += 100;
+  }
+
+  // 底部品牌
+  y = Math.max(y, H - 60);
+  ctx.fillStyle = '#4cc9f0';
+  ctx.font = 'bold 18px "Inter", sans-serif';
+  ctx.fillText('Pulse', pad, y);
+  const pw = ctx.measureText('Pulse').width;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText('Sphere', pad + pw, y);
+
+  ctx.fillStyle = '#6a6a6a';
+  ctx.font = '12px "JetBrains Mono", monospace';
+  const timeStr = new Date().toLocaleString('zh-CN');
+  ctx.fillText(timeStr, W - pad - ctx.measureText(timeStr).width, y);
+
+  // 下载
+  const link = document.createElement('a');
+  link.download = `pulse-${(h.title || 'hotspot').slice(0, 20).replace(/\s+/g, '_')}.png`;
+  link.href = canvas.toDataURL('image/png');
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 }

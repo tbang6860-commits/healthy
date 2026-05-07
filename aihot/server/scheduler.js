@@ -1,6 +1,6 @@
 import cron from 'node-cron';
 import config from './config.js';
-import db from './db.js';
+import db, { pruneSnapshots, forcePersist } from './db.js';
 import { fetchAll } from './fetcher/index.js';
 import { aggregate } from './aggregator.js';
 import { analyzeHotspots } from './ai/analyzer.js';
@@ -64,6 +64,12 @@ export async function runFetchCycle() {
       heat_score: h.heat_score,
     }));
     db.addSnapshots(snapshotRows);
+
+    // 6. 清理旧快照（保留最近 7 天）
+    pruneSnapshots(7);
+
+    // 7. 强制落盘，确保数据不丢失
+    forcePersist();
 
     const newCount = saved.filter(h => h.is_new).length;
 
