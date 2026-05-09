@@ -1,213 +1,259 @@
-# PulseSphere — AI 热点聚合分析平台
+# FitCal — 小食智能健身饮食助手
 
-> 多源实时热点聚合 · DeepSeek V4 智能分析 · 暗黑高级仪表盘
+基于 **纯前端 AI Agent 架构** 的健身饮食管理应用。支持食物热量计算、AI 饮食规划、食谱推荐、饮食记录，以及大模型智能对话。核心计算完全本地执行，AI 仅用于复杂咨询和对话润色。
 
 ---
 
-## 快速开始
+## 核心功能
 
-```bash
-# 后端
-cd server && npm install && npm start        # http://localhost:3000
+| 功能 | 说明 | 技术特点 |
+|------|------|---------|
+| **热量计算** | 输入"鸡胸肉 200g"自动计算热量和营养 | 本地正则解析 + 食物数据库 |
+| **人体分析** | BMI、BMR、TDEE 计算与解读 | Mifflin-St Jeor 公式 |
+| **食谱推荐** | 根据减脂/维持/增肌目标推荐一日食谱 | 内置食谱库 + AI 生成 |
+| **饮食记录** | 记录每日饮食，统计热量进度 | localStorage 持久化 |
+| **AI 对话** | 通过 Agent 自主决策调用 Skill | 硅基流动 API（OpenAI 兼容） |
+| **离线使用** | 无网络、无 API Key 时核心功能 100% 可用 | 本地公式 + 内置数据库 |
 
-# 前端
-cd client && npm install && npm run dev      # http://localhost:5173
-```
+---
+
+## 技术栈总览
+
+### 基础设施
+- **前端框架**：React 18 + Vite + JSX
+- **存储**：localStorage（前端本地）
+- **网络**：Fetch API（调用硅基流动 LLM API）
+- **向量化**：`@xenova/transformers`（浏览器端文本 Embedding）
+
+### AI 核心技术
+- **Prompt 工程**：BROKE 框架 + Few-shot 学习
+- **Function Calling**：OpenAI 兼容格式工具调用
+- **Agent 模式**：ReAct 思想（推理→行动→观察→回答）
+- **RAG**：向量检索增强生成（语义相似度匹配）
+- **LangChain 思想**：纯 JS 实现 Chain、Pipe、Memory、Tool、Agent
+- **Skill 封装**：5 个业务 Skill，支持 Skill 间互相调用
 
 ---
 
 ## 项目结构
 
 ```
-aihot/
-├── server/                        # Express 5 后端
-│   ├── index.js                   # 入口
-│   ├── config.js                  # 环境变量
-│   ├── db.js                      # better-sqlite3
-│   ├── fetcher/                   # Firecrawl + Twitter 抓取
-│   ├── ai/                        # DeepSeek V4 分析引擎
-│   ├── aggregator.js              # 多源去重 + 热度打分
-│   ├── scheduler.js               # node-cron 30min 定时
-│   └── routes/                    # REST API
-├── client/                        # React 18 前端
-│   └── src/
-│       ├── App.jsx                # 路由 + 全局状态
-│       ├── pages/
-│       │   ├── Dashboard.jsx      # Bento Grid 热点看板
-│       │   ├── TopicDetail.jsx    # 热点详情 + AI 分析
-│       │   ├── Trends.jsx         # 24h 趋势图表
-│       │   ├── Settings.jsx       # 数据源状态 + 配置
-│       │   └── AgentChat.jsx      # AI 对话助手
-│       ├── components/
-│       │   ├── HotCard.jsx        # 热点卡片
-│       │   ├── HeatBadge.jsx      # 热度条
-│       │   ├── SourceTag.jsx      # 平台标签
-│       │   ├── Navbar.jsx         # 顶部导航
-│       │   └── TrendChart.jsx     # SVG 趋势图
-│       └── index.css              # 全局样式 + 设计 Token
-├── TECH_PLAN.md                   # 技术方案详情
-├── REQUIREMENTS.md                # 需求文档
-└── README.md                      # 本文件
+health/
+├── assets/                    ← 图片、字体等资源
+├── src/
+│   ├── components/            ← React 组件（Modal、Tabs）
+│   │   ├── Modal.css / Modal.jsx
+│   │   └── Tabs.css / Tabs.jsx
+│   ├── pages/                 ← React 页面组件
+│   │   ├── Home.css / Home.jsx
+│   │   ├── Diet.css / Diet.jsx
+│   │   ├── Calorie.css / Calorie.jsx
+│   │   ├── Records.css / Records.jsx
+│   │   └── Settings.css / Settings.jsx
+│   ├── js/                    ← 业务逻辑层
+│   │   ├── agents/
+│   │   │   └── masterAgent.js      ← 主控 Agent（规划→执行→反思）
+│   │   ├── autogen/           ← 4 个业务助手
+│   │   │   ├── calorieCalculator.js
+│   │   │   ├── dietPlanner.js
+│   │   │   ├── recipeRecommender.js
+│   │   │   └── systemManager.js    ← AI 路由 + 离线降级
+│   │   ├── core/              ← LangChain + PromptBuilder
+│   │   │   ├── langchain.js
+│   │   │   └── promptBuilder.js
+│   │   ├── data/              ← 数据层
+│   │   │   ├── foodData.js
+│   │   │   ├── importer.js
+│   │   │   └── storage.js
+│   │   ├── rag/               ← 向量检索
+│   │   │   ├── retriever.js
+│   │   │   ├── sync.js
+│   │   │   └── vectorDb.js
+│   │   ├── skills/            ← 🔥 业务 Skill 层（5 个 Skill）
+│   │   │   ├── skillBase.js
+│   │   │   ├── bodyAnalysisSkill.js
+│   │   │   ├── calorieSkill.js
+│   │   │   ├── dietSkill.js
+│   │   │   ├── foodQuerySkill.js
+│   │   │   └── recipeSkill.js
+│   │   └── utils/
+│   │       └── helpers.js
+│   ├── App.css / App.jsx      ← 根组件
+│   ├── main.jsx               ← React 入口
+│   └── style.css              ← 全局样式
+├── index.html                 ← Vite 入口
+├── vite.config.js             ← Vite 配置
+├── package.json               ← 依赖配置（react + vite）
+├── .gitignore
+├── README.md                  ← 项目总览（本文档）
+├── SKILLS.md                  ← Skill 使用指南
+├── TECHNOLOGY.md              ← AI 技术详解
+├── UI_DESIGN.md               ← 前端设计系统
+├── INSTALL.md                 ← 安装和运行指南
+├── CHECKLIST.md               ← 改造检查清单
+├── DEBUG.md                   ← 调试指南
+└── FIX-GUIDE.md               ← 常见错误修复
 ```
 
 ---
 
-## 设计系统 — PulseSphere Dark Premium
+## AI 架构详解
 
-### 设计理念
-
-以"脉冲宇宙"为隐喻 — 每个热点是一颗脉冲星，热度越高脉冲越强。暗黑背景营造太空深邃感，青色霓虹作为统一的高亮色贯穿全平台。
-
-### 色彩 Token
-
-| Token | Hex | 用途 |
-|-------|-----|------|
-| `--bg-root` | `#0f0f0f` | 页面根背景 |
-| `--bg-card` | `#1a1a1a` | 卡片/表面背景 |
-| `--border-card` | `#2a2a2a` | 卡片边框 |
-| `--border-active` | `#4cc9f0` | 悬停/激活边框 |
-| `--accent` | `#4cc9f0` | 全局高亮色（氰蓝） |
-| `--text-primary` | `#ffffff` | 主文本 |
-| `--text-secondary` | `#a0a0a0` | 次要文本 |
-| `--text-muted` | `#8a8a8a` | 辅助文本（通过 WCAG AA） |
-
-### 热度色阶
-
-| 等级 | 渐变 | 阈值 |
-|------|------|------|
-| 高热 | `#4cc9f0 → #4361ee` | > 70° |
-| 中热 | `#3a7bd5 → #3060c0` | 30°–70° |
-| 低热 | `#2a4a6c → #3a5478` | < 30° |
-
-### 平台来源标签
-
-| 平台 | 配色 | 说明 |
-|------|------|------|
-| 微博 | `#ff6498` | 半透明粉底 + 粉色边框 |
-| 百度 | `#6d90ff` | 半透明蓝底 |
-| 知乎 | `#33eaff` | 半透明青底 |
-| Twitter/X | `#33f092` | 半透明绿底 |
-| B 站 | `#fb7299` 实底 + 白字 | 品牌粉专属样式 |
-| V2EX | `#a0a0a0` | 低调灰 |
-| HN | `#ff8844` | 半透明橙底 |
-| GitHub | `#c8d2dc` | 半透明白底 |
-
-### 核心交互
-
-- **卡片悬停**: `translateY(-2px)` + 边框高亮 `#4cc9f0` + 阴影扩散
-- **入场动画**: `fadeInUp` 0.3s ease-out，卡片按索引交错延迟 40ms
-- **分类切换**: framer-motion `AnimatePresence` 淡入淡出 0.2s
-- **骨架屏**: shimmer 动画 1.5s，`#1a1a1a → #222 → #1a1a1a` 渐变
-
----
-
-## UI/UX Pro Max 设计审计记录
-
-> **审计日期**: 2026-05-06 | **审计工具**: UI/UX Pro Max Skill (v10 优先级体系)
-
-### 审计摘要
-
-基于 UI/UX Pro Max 技能的 10 级优先级规则体系（Accessibility → Charts），对 PulseSphere v1.0 暗黑高级仪表盘进行了系统性审查。共发现 **5 类问题**，已全部修复。
-
-### 修复清单
-
-#### 1. 颜色对比度 — Accessibility (Priority 1)
-
-**问题**: `#6b6b6b` 辅助文本在 `#1a1a1a`(卡片) 和 `#0f0f0f`(背景) 上的对比度分别为 ~3.3:1 和 ~3.6:1，**未达 WCAG AA 4.5:1 标准**。
-
-**修复**: 全局 `#6b6b6b → #8a8a8a`。新对比度在卡片背景上为 ~4.7:1，在根背景上为 ~5.3:1，**均通过 AA 级**。
-
-| 场景 | 修复前 | 修复后 | 标准 |
-|------|--------|--------|------|
-| 辅助文本 on 卡片 | 3.3:1 | 4.7:1 | ≥ 4.5:1 |
-| 辅助文本 on 背景 | 3.6:1 | 5.3:1 | ≥ 4.5:1 |
-
-**影响文件**: `index.css`, `Navbar.jsx`, `Dashboard.jsx`, `Trends.jsx`, `TopicDetail.jsx`, `TrendChart.jsx`, `Settings.jsx`, `AgentChat.jsx`
-
-#### 2. Focus 环 — Accessibility (Priority 1)
-
-**问题**: 所有交互元素缺少 `:focus-visible` 样式，键盘 Tab 导航用户无法判断当前焦点位置。
-
-**修复**:
-- 全局 CSS 添加 `:focus-visible { outline: 2px solid #4cc9f0; outline-offset: 2px; }`
-- App.jsx 添加 `.skip-link` 组件，首个 Tab 即可跳至 `<main id="main-content">`
-
-#### 3. 触摸目标 — Touch & Interaction (Priority 2)
-
-**问题**: 分类标签(~38px)、来源标签(<30px)、刷新按钮(32px) 高度均小于 Apple HIG / Material Design 规定的 44px 最小触摸目标。
-
-**修复**:
-- 导航标签、分类标签、快捷按钮: 添加 `min-h-[44px]`
-- 刷新按钮: `min-w-[44px] min-h-[44px]`
-- 分类标签间距: `gap-1.5`(6px) → `gap-2`(8px)
-
-#### 4. 减少动画 — Animation (Priority 7)
-
-**问题**: 未提供 `prefers-reduced-motion` 媒体查询，动画对前庭敏感用户不友好。
-
-**修复**:
-- 添加 `@media (prefers-reduced-motion: reduce)` 规则，所有动画/过渡归零
-- Card hover 的 `translateY` 在 reduced-motion 下禁用
-- `fadeInUp` 入场动画从 0.4s 收紧至 0.3s（Apple HIG 推荐范围）
-
-#### 5. 键盘无障碍 — Navigation (Priority 9)
-
-**问题**: HotCard 为 `<div onclick>` 实现，键盘用户无法通过 Enter/Space 激活。
-
-**修复**:
-- HotCard 添加 `role="button"` + `tabIndex={0}` + `onKeyDown` 处理 Enter/Space
-- 每个 HotCard 设置 `aria-label` 告知屏幕阅读器目标内容
-- AgentChat 对话区添加 `role="log"`，输入框添加 `aria-label`
-- 刷新按钮添加 `aria-label="手动刷新数据"`
-
-#### 6. 元数据修正
-
-- `<html lang="en">` → `lang="zh-CN"`（页面内容为中文）
-- `<title>client</title>` → `<title>PulseSphere — AI 热点聚合分析</title>`
-
-### 技术栈
-
-| 层级 | 技术 | 版本 |
-|------|------|------|
-| 前端框架 | React | 19.x |
-| 构建工具 | Vite | 8.x |
-| CSS 框架 | Tailwind CSS | 4.x |
-| 动画库 | framer-motion | 12.x |
-| 图标库 | lucide-react | 1.x |
-| 后端框架 | Express | 5.x |
-| 数据库 | better-sqlite3 | - |
-| AI 引擎 | DeepSeek V4 | `deepseek-v4-flash` |
-| 定时任务 | node-cron | - |
-
----
-
-## API 端点
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/hotspots` | 热点列表（`?category=&source=&limit=`） |
-| GET | `/api/hotspots/trends` | 24h 趋势数据 |
-| GET | `/api/hotspots/:id` | 热点详情 + AI 分析 |
-| GET | `/api/sources` | 数据源状态 |
-| POST | `/api/sources/refresh` | 手动触发刷新 |
-| POST | `/api/agent/chat` | AI 助手对话 |
-
----
-
-## 数据流
+### 六层架构
 
 ```
-node-cron (30min)
-    │
-    ├─→ Firecrawl API → 微博 / 百度 / 知乎
-    └─→ twitterapi.io  → Twitter 趋势
-            │
-            ▼
-    Aggregator (去重 + 打分)
-            │
-            ▼
-    DeepSeek V4 (摘要 + 分类 + 情感)
-            │
-            ▼
-    SQLite → Express 5 API → React Frontend
+┌─────────────────────────────────────────┐
+│  Layer 6: 用户界面层（UI Layer）         │
+│    首页仪表盘 / 食谱聊天页 / 热量计算页   │
+│    记录管理页 / 设置页                   │
+│    技术：React 18 + CSS3 Flex/Grid       │
+├─────────────────────────────────────────┤
+│  Layer 5: 应用调度层（App Layer）        │
+│    Tab 切换 / 表单绑定 / 页面刷新         │
+│    技术：React Hooks + Vite HMR          │
+├─────────────────────────────────────────┤
+│  Layer 4: 智能代理层（Agent Layer）      │
+│    MasterAgent — 统一 AI 入口            │
+│    ├─ 5 个 Skill（业务场景封装）          │
+│    ├─ LangChain Agent（工具选择与调度）   │
+│    ├─ Conversation Memory（对话上下文）   │
+│    └─ API 路由（硅基流动 / 离线降级）     │
+├─────────────────────────────────────────┤
+│  Layer 3: AI 核心层（AI Core Layer）     │
+│    PromptBuilder（BROKE + Few-shot）     │
+│    LangChainCore（链式调用基础设施）      │
+│    技术：纯 JS 实现                       │
+├─────────────────────────────────────────┤
+│  Layer 2: 业务封装层（Business Layer）   │
+│    5 个 Skill + 4 个 Autogen 助手         │
+│    ├─ BodyAnalysisSkill（BMI/BMR/TDEE）   │
+│    ├─ CalorieSkill（热量/营养计算）       │
+│    ├─ RecipeSkill（食谱推荐）             │
+│    ├─ FoodQuerySkill（食物查询）          │
+│    └─ DietSkill（饮食规划，组合调用）     │
+├─────────────────────────────────────────┤
+│  Layer 1: 数据层（Data Layer）           │
+│    食物数据库 / 食谱库 / 用户资料         │
+│    向量数据库 / 对话记忆                   │
+│    技术：localStorage + @xenova/transformers
+└─────────────────────────────────────────┘
 ```
+
+### 5 个 Skill 及调用关系
+
+| Skill | 职责 | 是否调用其他 Skill |
+|-------|------|------------------|
+| `body_analysis` | BMI、BMR、TDEE 计算 | ❌ 独立 |
+| `food_query` | 食物营养查询 | ❌ 独立 |
+| `recipe_recommend` | 食谱推荐 | ❌ 独立 |
+| `calorie_calculate` | 热量计算 | ❌ 独立 |
+| `diet_plan` | 完整饮食规划 | ✅ 组合 calorie + recipe |
+
+**Skill 间调用示例**：
+```
+用户："帮我制定一周减脂计划"
+  → MasterAgent 选择 diet_plan Skill
+  → DietSkill 内部调用 CalorieSkill 计算每日热量
+  → DietSkill 内部调用 RecipeSkill 生成食谱
+  → 组装成完整的一周饮食方案返回
+```
+
+---
+
+## 快速启动
+
+### 方式一：开发模式
+
+```bash
+# 进入项目目录
+cd health
+
+# 安装依赖
+npm install
+
+# 启动开发服务器
+npm run dev
+
+# 浏览器自动打开 http://localhost:3000
+```
+
+### 方式二：构建生产版本
+
+```bash
+npm run build
+```
+
+构建产物在 `dist/` 目录。
+
+---
+
+## 配置 AI API（可选）
+
+应用**无需 API Key 也能使用**核心功能。如需 AI 对话：
+
+1. 访问 [siliconflow.cn](https://siliconflow.cn) 注册并获取 API Key
+2. 在「设置」页填写：
+   - API 地址：`https://api.siliconflow.cn/v1/chat/completions`
+   - API Key：你的密钥
+   - 模型：`Qwen/Qwen2.5-7B-Instruct`（免费）
+
+## 常见问题
+
+### 1. 首页显示"资料不完整"
+**现象**：首页显示"资料不完整"提示，无法看到每日目标热量。
+
+**原因**：计算 BMR 需要完整的个人资料（体重、身高、年龄、性别）。
+
+**解决**：进入「设置」页面，填写所有基础信息：
+- 身高（cm）
+- 体重（kg）
+- 年龄
+- 性别
+- 活动系数
+- 目标（减脂/维持/增肌）
+
+### 2. AI 回复显示 JSON 格式
+**现象**：AI 对话中显示类似 `{"error": "...", "message": "..."}` 的文本。
+
+**原因**：当用户资料不完整或网络异常时，系统返回错误对象。
+
+**解决**：确保已在「设置」中填写完整的个人资料，并检查 API 配置是否正确。
+
+### 3. 模块加载失败
+**现象**：页面功能异常，控制台显示模块导入错误。
+
+**原因**：早期版本存在 ES Module 导入顺序问题。
+
+**解决**：当前版本已修复，请确保使用最新代码。如果仍有问题，尝试清除浏览器缓存后刷新页面。
+
+---
+
+## 技术亮点
+
+1. **AI 按需调用**：简单计算本地做，复杂问答走 AI，历史问题靠 RAG。不是事事问 AI。
+2. **纯前端 AI Agent**：无后端服务器，浏览器直接跑 LLM 调用 + 向量检索 + Agent 决策 + 工具执行。
+3. **Prompt 工程系统化**：BROKE 框架 + Few-shot 示例，让 AI 输出稳定、专业、有风格。
+4. **模块化 Skill 架构**：从"散装 Tool"升级到"业务 Skill"，支持 Skill 间互相调用。
+5. **离线优先设计**：三级降级策略，无网/无 API 时核心功能 100% 可用。
+
+---
+
+## 更新日志
+
+### 2024-05-07
+- **修复模块加载顺序**: MasterAgent 改为延迟初始化，确保所有 Skill 加载完成后再创建实例
+- **修复 ES Module 导入**: systemManager.js、calorieCalculator.js、dietPlanner.js 添加兼容导出
+- **改进错误处理**: Diet.jsx 正确显示 Skill 错误信息而非 JSON 字符串
+- **优化用户体验**: 首页当资料不完整时显示明确提示，引导用户完善信息
+
+## 相关文档
+
+| 文档 | 内容 |
+|------|------|
+| [SKILLS.md](SKILLS.md) | 5 个 Skill 的详细用法、参数、返回值 |
+| [TECHNOLOGY.md](TECHNOLOGY.md) | AI 技术详解（BROKE、Function Calling、Agent、RAG、LangChain） |
+| [UI_DESIGN.md](UI_DESIGN.md) | 前端设计系统（颜色、组件、图标规范） |
+| [INSTALL.md](INSTALL.md) | 安装和运行指南 |
+| [CHECKLIST.md](CHECKLIST.md) | 改造检查清单 |
+| [DEBUG.md](DEBUG.md) | 调试指南 |
+| [FIX-GUIDE.md](FIX-GUIDE.md) | 常见错误修复指南 |
